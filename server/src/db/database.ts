@@ -198,6 +198,27 @@ export class DatabaseService {
       )
     `);
 
+    // Job locks table (for idempotent intent execution)
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS job_locks (
+        id TEXT PRIMARY KEY,
+        job_key TEXT UNIQUE NOT NULL,
+        intent_id TEXT NOT NULL,
+        scheduled_at INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        started_at INTEGER,
+        completed_at INTEGER,
+        result TEXT,
+        error TEXT,
+        attempts INTEGER DEFAULT 1,
+        created_at INTEGER NOT NULL
+      )
+    `);
+
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_job_locks_key ON job_locks(job_key)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_job_locks_intent ON job_locks(intent_id)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_job_locks_status ON job_locks(status)`);
+
     // Execution metrics table
     this.db.run(`
       CREATE TABLE IF NOT EXISTS execution_metrics (
@@ -981,4 +1002,232 @@ export class DatabaseService {
       quoteAccuracy: (comp[1] as number) || 1,
     };
   }
+
+  // ==================== Job Lock Methods ====================
+
+  /**
+   * Create a new job lock
+   */
+  async createJobLock(job: {
+    id: string;
+    jobKey: string;
+    intentId: string;
+    scheduledAt: number;
+    status: string;
+    startedAt?: number;
+    attempts: number;
+    createdAt: number;
+  }): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    this.db.run(
+      `INSERT INTO job_locks (
+        id, job_key, intent_id, scheduled_at, status, started_at, attempts, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        job.id,
+        job.jobKey,
+        job.intentId,
+        job.scheduledAt,
+        job.status,
+        job.startedAt || null,
+        job.attempts,
+        job.createdAt,
+      ]
+    );
+
+    this.saveToFile();
+  }
+
+  /**
+   * Get job by key
+   */
+  async getJobByKey(jobKey: string): Promise<{
+    id: string;
+    jobKey: string;
+    intentId: string;
+    scheduledAt: number;
+    status: string;
+    startedAt?: number;
+    completedAt?: number;
+    result?: string;
+    error?: string;
+    attempts: number;
+    createdAt: number;
+  } | null> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = this.db.exec('SELECT * FROM job_locks WHERE job_key = ?', [jobKey]);
+
+    if (result.length === 0 || result[0].values.length === 0) return null;
+
+    return this.mapJobLockRow(result[0].columns, result[0].values[0]);
+  }
+
+  /**
+   * Get job by ID
+   */
+  async getJobById(jobId: string): Promise<{
+    id: string;
+    jobKey: string;
+    intentId: string;
+    scheduledAt: number;
+    status: string;
+    startedAt?: number;
+    completedAt?: number;
+    result?: string;
+    error?: string;
+    attempts: number;
+    createdAt: number;
+  } | null> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = this.db.exec('SELECT * FROM job_locks WHERE id = ?', [jobId]);
+
+    if (result.length === 0 || result[0].values.length === 0) return null;
+
+    return this.mapJobLockRow(result[0].columns, result[0].values[0]);
+  }
+
+  /**
+   * Update job status and fields
+   */
+  async updateJobLock(
+    jobId: string,
+    updates: {
+      status?: string;
+      startedAt?: number;
+      completedAt?: number;
+      result?: string;
+      error?: string;
+      attempts?: number;
+    }
+  ): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const fields: string[] = [];
+    const values: any[] = [];
+
+    if (updates.status !== undefined) {
+      fields.push('status = ?');
+      values.push(updates.status);
+    }
+    if (updates.startedAt !== undefined) {
+      fields.push('started_at = ?');
+      values.push(updates.startedAt);
+    }
+    if (updates.completedAt !== undefined) {
+      fields.push('completed_at = ?');
+      values.push(updates.completedAt);
+    }
+    if (updates.result !== undefined) {
+      fields.push('result = ?');
+      values.push(updates.result);
+    }
+    if (updates.error !== undefined) {
+      fields.push('error = ?');
+      values.push(updates.error);
+    }
+    if (updates.attempts !== undefined) {
+      fields.push('attempts = ?');
+      values.push(updates.attempts);
+    }
+
+    if (fields.length === 0) return;
+
+    values.push(jobId);
+    const sql = `UPDATE job_locks SET ${fields.join(', ')} WHERE id = ?`;
+    this.db.run(sql, values);
+
+    this.saveToFile();
+  }
+
+  /**
+   * Get jobs for an intent
+   */
+  async getJobsByIntent(intentId: string): Promise<Array<{
+    id: string;
+    jobKey: string;
+    intentId: string;
+    scheduledAt: number;
+    status: string;
+    startedAt?: number;
+    completedAt?: number;
+    result?: string;
+    error?: string;
+    attempts: number;
+    createdAt: number;
+  }>> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = this.db.exec(
+      'SELECT * FROM job_locks WHERE intent_id = ? ORDER BY scheduled_at DESC',
+      [intentId]
+    );
+
+    if (result.length === 0) return [];
+
+    return result[0].values.map((row) => this.mapJobLockRow(result[0].columns, row));
+  }
+
+  /**
+   * Get stale running jobs (for cleanup)
+   */
+  async getStaleJobs(staleThresholdMs: number = 300000): Promise<Array<{
+    id: string;
+    jobKey: string;
+    intentId: string;
+    scheduledAt: number;
+    status: string;
+    startedAt?: number;
+    attempts: number;
+    createdAt: number;
+  }>> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const threshold = Date.now() - staleThresholdMs;
+
+    const result = this.db.exec(
+      `SELECT * FROM job_locks WHERE status = 'running' AND started_at < ?`,
+      [threshold]
+    );
+
+    if (result.length === 0) return [];
+
+    return result[0].values.map((row) => this.mapJobLockRow(result[0].columns, row));
+  }
+
+  private mapJobLockRow(columns: string[], values: any[]): {
+    id: string;
+    jobKey: string;
+    intentId: string;
+    scheduledAt: number;
+    status: string;
+    startedAt?: number;
+    completedAt?: number;
+    result?: string;
+    error?: string;
+    attempts: number;
+    createdAt: number;
+  } {
+    const row: Record<string, any> = {};
+    columns.forEach((col, idx) => {
+      row[col] = values[idx];
+    });
+
+    return {
+      id: row.id,
+      jobKey: row.job_key,
+      intentId: row.intent_id,
+      scheduledAt: row.scheduled_at,
+      status: row.status,
+      startedAt: row.started_at || undefined,
+      completedAt: row.completed_at || undefined,
+      result: row.result || undefined,
+      error: row.error || undefined,
+      attempts: row.attempts,
+      createdAt: row.created_at,
+    };
+  }
 }
+
