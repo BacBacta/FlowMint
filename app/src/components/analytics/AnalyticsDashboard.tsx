@@ -19,7 +19,10 @@ import {
   RefreshCw,
   ArrowUpRight,
   ArrowDownRight,
+  LineChart,
 } from 'lucide-react';
+
+import { AnalyticsCharts } from './AnalyticsCharts';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
@@ -91,7 +94,7 @@ export function AnalyticsDashboard() {
   const [swapAnalytics, setSwapAnalytics] = useState<SwapAnalytics | null>(null);
   const [executionStats, setExecutionStats] = useState<ExecutionStats | null>(null);
   const [userStats, setUserStats] = useState<UserStats | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'swaps' | 'execution' | 'user'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'charts' | 'swaps' | 'execution' | 'user'>('overview');
 
   // Fetch data
   const fetchData = async () => {
@@ -236,6 +239,7 @@ export function AnalyticsDashboard() {
       <div className="flex border-b border-gray-700 mb-6">
         {[
           { id: 'overview', label: 'Vue d\'ensemble' },
+          { id: 'charts', label: 'Graphiques' },
           { id: 'swaps', label: 'Swaps' },
           { id: 'execution', label: 'Exécution' },
           ...(publicKey ? [{ id: 'user', label: 'Mes Stats' }] : []),
@@ -259,6 +263,11 @@ export function AnalyticsDashboard() {
         <div className="flex items-center justify-center py-12">
           <div className="animate-spin w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full" />
         </div>
+      )}
+
+      {/* Charts Tab */}
+      {!isLoading && activeTab === 'charts' && (
+        <AnalyticsCharts />
       )}
 
       {/* Overview Tab */}

@@ -20,6 +20,7 @@ import { createIntentRoutes } from './api/routes/intent.js';
 import { createHealthRoutes } from './api/routes/health.js';
 import { createNotificationRoutes } from './api/routes/notifications.js';
 import { createAnalyticsRoutes } from './api/routes/analytics.js';
+import { createAuthRoutes } from './api/routes/auth.js';
 
 /**
  * Creates and configures the Express application
@@ -69,6 +70,7 @@ export function createApp(db: DatabaseService): Express {
 
   // API routes
   const apiRouter = express.Router();
+  apiRouter.use('/auth', createAuthRoutes());
   apiRouter.use('/swap', createSwapRoutes(db));
   apiRouter.use('/payments', createPaymentRoutes(db));
   apiRouter.use('/intents', createIntentRoutes(db));
