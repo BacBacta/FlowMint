@@ -21,6 +21,7 @@ import { createHealthRoutes } from './api/routes/health.js';
 import { createNotificationRoutes } from './api/routes/notifications.js';
 import { createAnalyticsRoutes } from './api/routes/analytics.js';
 import { createAuthRoutes } from './api/routes/auth.js';
+import swaggerRouter from './api/swagger.js';
 
 /**
  * Creates and configures the Express application
@@ -67,6 +68,9 @@ export function createApp(db: DatabaseService): Express {
 
   // Health check routes
   app.use('/health', createHealthRoutes());
+
+  // API Documentation (Swagger UI)
+  app.use('/docs', swaggerRouter);
 
   // API routes
   const apiRouter = express.Router();

@@ -1,0 +1,125 @@
+# FlowMint Docker Compose Configuration
+# 
+# Usage:
+#   Development: docker-compose up
+#   Production:  docker-compose -f docker-compose.yml -f docker-compose.prod.yml up
+#
+# Services:
+#   - server:   FlowMint API server (Express.js)
+#   - app:      FlowMint Frontend (Next.js)
+#   - redis:    Cache and session storage
+#
+
+version: '3.8'
+
+services:
+  # ==========================================
+  # FlowMint API Server
+  # ==========================================
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: server
+    container_name: flowmint-server
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=3001
+      - DATABASE_URL=file:/app/data/flowmint.db
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-change-in-production}
+      - SOLANA_RPC_URL=${SOLANA_RPC_URL:-https://api.devnet.solana.com}
+      - FLOWMINT_PROGRAM_ID=${FLOWMINT_PROGRAM_ID:-}
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3000}
+    volumes:
+      - flowmint-data:/app/data
+      - ./server/src:/app/src:ro  # For development hot-reload
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - flowmint-network
+
+  # ==========================================
+  # FlowMint Frontend App
+  # ==========================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    container_name: flowmint-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - NEXT_PUBLIC_API_URL=http://server:3001
+      - NEXT_PUBLIC_SOLANA_NETWORK=${SOLANA_NETWORK:-devnet}
+      - NEXT_PUBLIC_SOLANA_RPC_URL=${SOLANA_RPC_URL:-https://api.devnet.solana.com}
+      - NEXT_PUBLIC_FLOWMINT_PROGRAM_ID=${FLOWMINT_PROGRAM_ID:-}
+    depends_on:
+      - server
+    networks:
+      - flowmint-network
+
+  # ==========================================
+  # Redis Cache
+  # ==========================================
+  redis:
+    image: redis:7-alpine
+    container_name: flowmint-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - flowmint-network
+
+  # ==========================================
+  # Development Tools (optional)
+  # ==========================================
+  adminer:
+    image: adminer
+    container_name: flowmint-adminer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - ADMINER_DEFAULT_SERVER=server
+    profiles:
+      - dev
+    networks:
+      - flowmint-network
+
+# ==========================================
+# Volumes
+# ==========================================
+volumes:
+  flowmint-data:
+    driver: local
+  redis-data:
+    driver: local
+
+# ==========================================
+# Networks
+# ==========================================
+networks:
+  flowmint-network:
+    driver: bridge
