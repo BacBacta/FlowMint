@@ -12,6 +12,7 @@ import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
 import { DatabaseService } from '../db/database.js';
 import { ExecutionEngine } from './executionEngine.js';
+import { NotificationService, NotificationType, NotificationPriority } from './notificationService.js';
 
 /**
  * Intent types
@@ -310,6 +311,24 @@ export class IntentScheduler {
           'DCA slice failed'
         );
         // Don't fail the whole intent, just skip this slice
+        // Notify user of failure
+        await NotificationService.notifyDCAExecuted(
+          intent.userPublicKey,
+          intent.id,
+          intent.executionCount + 1,
+          amountToSwap,
+          false,
+          result.error
+        );
+      } else {
+        // Notify user of successful DCA execution
+        await NotificationService.notifyDCAExecuted(
+          intent.userPublicKey,
+          intent.id,
+          intent.executionCount + 1,
+          amountToSwap,
+          true
+        );
       }
 
       // Update remaining amount
@@ -320,6 +339,16 @@ export class IntentScheduler {
         // Intent completed
         await this.db.updateIntentStatus(intent.id, IntentStatus.COMPLETED);
         this.log.info({ intentId: intent.id }, 'DCA intent completed');
+        
+        // Notify user of DCA completion
+        await NotificationService.notify({
+          userId: intent.userPublicKey,
+          type: NotificationType.INTENT_COMPLETED,
+          title: 'DCA terminé',
+          message: `Votre plan DCA a été complété avec succès après ${intent.executionCount + 1} exécutions.`,
+          priority: NotificationPriority.NORMAL,
+          metadata: { intentId: intent.id, intentType: 'DCA' },
+        });
       } else {
         // Schedule next execution
         const nextExecution = now + (intent.intervalSeconds || 0) * 1000;
@@ -396,14 +425,14 @@ export class IntentScheduler {
         'Stop-loss triggered'
       );
 
-      await this.executeStopLoss(intent);
+      await this.executeStopLoss(intent, currentPrice);
     }
   }
 
   /**
    * Execute stop-loss swap
    */
-  private async executeStopLoss(intent: Intent): Promise<void> {
+  private async executeStopLoss(intent: Intent, currentPrice: number): Promise<void> {
     try {
       const result = await this.executionEngine.executeSwap({
         userPublicKey: intent.userPublicKey,
@@ -420,13 +449,42 @@ export class IntentScheduler {
           'Stop-loss execution failed'
         );
         await this.db.updateIntentStatus(intent.id, IntentStatus.FAILED);
+        
+        // Notify user of stop-loss failure
+        await NotificationService.notifyStopLossTriggered(
+          intent.userPublicKey,
+          intent.id,
+          intent.priceThreshold || 0,
+          currentPrice,
+          false,
+          result.error
+        );
       } else {
         await this.db.updateIntentStatus(intent.id, IntentStatus.COMPLETED);
         this.log.info({ intentId: intent.id }, 'Stop-loss executed successfully');
+        
+        // Notify user of successful stop-loss execution
+        await NotificationService.notifyStopLossTriggered(
+          intent.userPublicKey,
+          intent.id,
+          intent.priceThreshold || 0,
+          currentPrice,
+          true
+        );
       }
     } catch (error) {
       this.log.error({ intentId: intent.id, error }, 'Error executing stop-loss');
       await this.db.updateIntentStatus(intent.id, IntentStatus.FAILED);
+      
+      // Notify user of stop-loss error
+      await NotificationService.notifyStopLossTriggered(
+        intent.userPublicKey,
+        intent.id,
+        intent.priceThreshold || 0,
+        currentPrice,
+        false,
+        error instanceof Error ? error.message : 'Unknown error'
+      );
     }
   }
 

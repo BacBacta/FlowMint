@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import dynamic from 'next/dynamic';
+import { NotificationBell } from './notifications';
 
 // Dynamically import wallet button to avoid SSR hydration mismatch
 const WalletMultiButtonDynamic = dynamic(
@@ -15,6 +16,7 @@ const navigation = [
   { name: 'DCA', href: '/dca' },
   { name: 'Stop-Loss', href: '/stop-loss' },
   { name: 'Payments', href: '/payments' },
+  { name: 'Analytics', href: '/analytics' },
 ];
 
 export function Header() {
@@ -63,8 +65,9 @@ export function Header() {
           })}
         </nav>
 
-        {/* Wallet Button */}
+        {/* Wallet Button & Notifications */}
         <div className="flex items-center gap-4">
+          <NotificationBell />
           <WalletMultiButtonDynamic />
         </div>
       </div>

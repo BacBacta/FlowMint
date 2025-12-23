@@ -18,6 +18,8 @@ import { createSwapRoutes } from './api/routes/swap.js';
 import { createPaymentRoutes } from './api/routes/payment.js';
 import { createIntentRoutes } from './api/routes/intent.js';
 import { createHealthRoutes } from './api/routes/health.js';
+import { createNotificationRoutes } from './api/routes/notifications.js';
+import { createAnalyticsRoutes } from './api/routes/analytics.js';
 
 /**
  * Creates and configures the Express application
@@ -70,6 +72,8 @@ export function createApp(db: DatabaseService): Express {
   apiRouter.use('/swap', createSwapRoutes(db));
   apiRouter.use('/payments', createPaymentRoutes(db));
   apiRouter.use('/intents', createIntentRoutes(db));
+  apiRouter.use('/notifications', createNotificationRoutes(db));
+  apiRouter.use('/analytics', createAnalyticsRoutes(db));
 
   app.use('/api/v1', apiRouter);
 

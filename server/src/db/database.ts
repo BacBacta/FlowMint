@@ -162,6 +162,58 @@ export class DatabaseService {
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_payments_merchant ON payments(merchant_public_key)`);
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status)`);
 
+    // Notifications table
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id TEXT PRIMARY KEY,
+        user_public_key TEXT NOT NULL,
+        type TEXT NOT NULL,
+        priority TEXT NOT NULL,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        data TEXT,
+        read INTEGER DEFAULT 0,
+        created_at INTEGER NOT NULL
+      )
+    `);
+
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_public_key)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at DESC)`);
+
+    // Receipt comparisons table (actual vs estimated)
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS receipt_comparisons (
+        receipt_id TEXT PRIMARY KEY,
+        estimated_output TEXT NOT NULL,
+        actual_output TEXT NOT NULL,
+        difference TEXT NOT NULL,
+        difference_percent REAL NOT NULL,
+        slippage_used INTEGER NOT NULL,
+        actual_slippage REAL NOT NULL,
+        execution_time_ms INTEGER,
+        retry_count INTEGER DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (receipt_id) REFERENCES receipts(receipt_id)
+      )
+    `);
+
+    // Execution metrics table
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS execution_metrics (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        receipt_id TEXT,
+        rpc_endpoint TEXT,
+        success INTEGER NOT NULL,
+        latency_ms INTEGER NOT NULL,
+        retry_count INTEGER DEFAULT 0,
+        error_type TEXT,
+        created_at INTEGER NOT NULL
+      )
+    `);
+
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_execution_metrics_created ON execution_metrics(created_at DESC)`);
+
     this.log.debug('Database tables created');
   }
 
@@ -564,6 +616,369 @@ export class DatabaseService {
       txSignature: row.tx_signature,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+    };
+  }
+
+  // ==================== Notification Methods ====================
+
+  /**
+   * Save a notification
+   */
+  async saveNotification(notification: {
+    id: string;
+    userPublicKey: string;
+    type: string;
+    priority: string;
+    title: string;
+    message: string;
+    data?: Record<string, any>;
+    read: boolean;
+    createdAt: number;
+  }): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    this.db.run(
+      `INSERT INTO notifications (
+        id, user_public_key, type, priority, title, message, data, read, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        notification.id,
+        notification.userPublicKey,
+        notification.type,
+        notification.priority,
+        notification.title,
+        notification.message,
+        notification.data ? JSON.stringify(notification.data) : null,
+        notification.read ? 1 : 0,
+        notification.createdAt,
+      ]
+    );
+
+    this.saveToFile();
+  }
+
+  /**
+   * Get user's notifications
+   */
+  async getUserNotifications(
+    userPublicKey: string,
+    limit = 50,
+    unreadOnly = false
+  ): Promise<any[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = unreadOnly
+      ? `SELECT * FROM notifications WHERE user_public_key = ? AND read = 0 ORDER BY created_at DESC LIMIT ?`
+      : `SELECT * FROM notifications WHERE user_public_key = ? ORDER BY created_at DESC LIMIT ?`;
+
+    const result = this.db.exec(query, [userPublicKey, limit]);
+
+    if (result.length === 0) return [];
+
+    return result[0].values.map((row) => {
+      const cols = result[0].columns;
+      const obj: Record<string, any> = {};
+      cols.forEach((col, idx) => {
+        obj[col] = row[idx];
+      });
+      return {
+        id: obj.id,
+        userPublicKey: obj.user_public_key,
+        type: obj.type,
+        priority: obj.priority,
+        title: obj.title,
+        message: obj.message,
+        data: obj.data ? JSON.parse(obj.data) : null,
+        read: obj.read === 1,
+        createdAt: obj.created_at,
+      };
+    });
+  }
+
+  /**
+   * Mark notification as read
+   */
+  async markNotificationAsRead(notificationId: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    this.db.run(`UPDATE notifications SET read = 1 WHERE id = ?`, [notificationId]);
+    this.saveToFile();
+  }
+
+  /**
+   * Mark all notifications as read
+   */
+  async markAllNotificationsAsRead(userPublicKey: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    this.db.run(`UPDATE notifications SET read = 1 WHERE user_public_key = ?`, [userPublicKey]);
+    this.saveToFile();
+  }
+
+  /**
+   * Get unread notification count
+   */
+  async getUnreadNotificationCount(userPublicKey: string): Promise<number> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = this.db.exec(
+      `SELECT COUNT(*) as count FROM notifications WHERE user_public_key = ? AND read = 0`,
+      [userPublicKey]
+    );
+
+    if (result.length === 0 || result[0].values.length === 0) return 0;
+    return result[0].values[0][0] as number;
+  }
+
+  // ==================== Analytics Methods ====================
+
+  /**
+   * Save receipt comparison (actual vs estimated)
+   */
+  async saveReceiptComparison(comparison: {
+    receiptId: string;
+    estimatedOutput: string;
+    actualOutput: string;
+    difference: string;
+    differencePercent: number;
+    slippageUsed: number;
+    actualSlippage: number;
+    executionTimeMs?: number;
+    retryCount?: number;
+  }): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    this.db.run(
+      `INSERT OR REPLACE INTO receipt_comparisons (
+        receipt_id, estimated_output, actual_output, difference,
+        difference_percent, slippage_used, actual_slippage,
+        execution_time_ms, retry_count, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        comparison.receiptId,
+        comparison.estimatedOutput,
+        comparison.actualOutput,
+        comparison.difference,
+        comparison.differencePercent,
+        comparison.slippageUsed,
+        comparison.actualSlippage,
+        comparison.executionTimeMs || 0,
+        comparison.retryCount || 0,
+        Date.now(),
+      ]
+    );
+
+    this.saveToFile();
+  }
+
+  /**
+   * Get receipt comparison
+   */
+  async getReceiptComparison(receiptId: string): Promise<any | null> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = this.db.exec(
+      `SELECT * FROM receipt_comparisons WHERE receipt_id = ?`,
+      [receiptId]
+    );
+
+    if (result.length === 0 || result[0].values.length === 0) return null;
+
+    const cols = result[0].columns;
+    const row = result[0].values[0];
+    const obj: Record<string, any> = {};
+    cols.forEach((col, idx) => {
+      obj[col] = row[idx];
+    });
+
+    return {
+      receiptId: obj.receipt_id,
+      estimatedOutput: obj.estimated_output,
+      actualOutput: obj.actual_output,
+      difference: obj.difference,
+      differencePercent: obj.difference_percent,
+      slippageUsed: obj.slippage_used,
+      actualSlippage: obj.actual_slippage,
+      executionTimeMs: obj.execution_time_ms,
+      retryCount: obj.retry_count,
+    };
+  }
+
+  /**
+   * Save execution metric
+   */
+  async saveExecutionMetric(metric: {
+    receiptId?: string;
+    rpcEndpoint: string;
+    success: boolean;
+    latencyMs: number;
+    retryCount?: number;
+    errorType?: string;
+  }): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    this.db.run(
+      `INSERT INTO execution_metrics (
+        receipt_id, rpc_endpoint, success, latency_ms, retry_count, error_type, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        metric.receiptId || null,
+        metric.rpcEndpoint,
+        metric.success ? 1 : 0,
+        metric.latencyMs,
+        metric.retryCount || 0,
+        metric.errorType || null,
+        Date.now(),
+      ]
+    );
+
+    this.saveToFile();
+  }
+
+  /**
+   * Get receipts since timestamp
+   */
+  async getReceiptsSince(since: number): Promise<ReceiptRecord[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = this.db.exec(
+      `SELECT * FROM receipts WHERE timestamp >= ? ORDER BY timestamp DESC`,
+      [since]
+    );
+
+    if (result.length === 0) return [];
+    return result[0].values.map((row) => this.mapReceiptRow(result[0].columns, row));
+  }
+
+  /**
+   * Get intents since timestamp
+   */
+  async getIntentsSince(since: number): Promise<Intent[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = this.db.exec(
+      `SELECT * FROM intents WHERE created_at >= ? ORDER BY created_at DESC`,
+      [since]
+    );
+
+    if (result.length === 0) return [];
+    return result[0].values.map((row) => this.mapIntentRow(result[0].columns, row));
+  }
+
+  /**
+   * Get all active intents
+   */
+  async getAllActiveIntents(): Promise<Intent[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = this.db.exec(`SELECT * FROM intents WHERE status = 'active'`);
+
+    if (result.length === 0) return [];
+    return result[0].values.map((row) => this.mapIntentRow(result[0].columns, row));
+  }
+
+  /**
+   * Get user statistics
+   */
+  async getUserStats(since: number): Promise<{
+    totalUsers: number;
+    activeUsers: number;
+    newUsers: number;
+    returningUsers: number;
+    totalSwaps: number;
+    powerUsers: number;
+  }> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    // Total unique users ever
+    const totalResult = this.db.exec(`SELECT COUNT(DISTINCT user_public_key) as count FROM receipts`);
+    const totalUsers = totalResult.length > 0 ? (totalResult[0].values[0][0] as number) : 0;
+
+    // Active users in period
+    const activeResult = this.db.exec(
+      `SELECT COUNT(DISTINCT user_public_key) as count FROM receipts WHERE timestamp >= ?`,
+      [since]
+    );
+    const activeUsers = activeResult.length > 0 ? (activeResult[0].values[0][0] as number) : 0;
+
+    // New users (first swap in period)
+    const newResult = this.db.exec(
+      `SELECT COUNT(*) as count FROM (
+        SELECT user_public_key, MIN(timestamp) as first_swap FROM receipts
+        GROUP BY user_public_key
+        HAVING first_swap >= ?
+      )`,
+      [since]
+    );
+    const newUsers = newResult.length > 0 ? (newResult[0].values[0][0] as number) : 0;
+
+    // Total swaps in period
+    const swapsResult = this.db.exec(
+      `SELECT COUNT(*) as count FROM receipts WHERE timestamp >= ?`,
+      [since]
+    );
+    const totalSwaps = swapsResult.length > 0 ? (swapsResult[0].values[0][0] as number) : 0;
+
+    // Power users (>10 swaps)
+    const powerResult = this.db.exec(
+      `SELECT COUNT(*) as count FROM (
+        SELECT user_public_key, COUNT(*) as swap_count FROM receipts
+        GROUP BY user_public_key
+        HAVING swap_count > 10
+      )`
+    );
+    const powerUsers = powerResult.length > 0 ? (powerResult[0].values[0][0] as number) : 0;
+
+    return {
+      totalUsers,
+      activeUsers,
+      newUsers,
+      returningUsers: activeUsers - newUsers,
+      totalSwaps,
+      powerUsers,
+    };
+  }
+
+  /**
+   * Get execution statistics
+   */
+  async getExecutionStats(since: number): Promise<{
+    averageExecutionTimeMs: number;
+    rpcSuccessRate: number;
+    averageRetries: number;
+    averageSlippageDifference: number;
+    quoteAccuracy: number;
+  }> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    // Execution metrics
+    const metricsResult = this.db.exec(
+      `SELECT 
+        AVG(latency_ms) as avg_latency,
+        AVG(CASE WHEN success = 1 THEN 1.0 ELSE 0.0 END) as success_rate,
+        AVG(retry_count) as avg_retries
+      FROM execution_metrics WHERE created_at >= ?`,
+      [since]
+    );
+
+    // Comparison accuracy
+    const compResult = this.db.exec(
+      `SELECT 
+        AVG(ABS(difference_percent)) as avg_diff,
+        AVG(CASE WHEN ABS(difference_percent) < 0.5 THEN 1.0 ELSE 0.0 END) as accuracy
+      FROM receipt_comparisons WHERE created_at >= ?`,
+      [since]
+    );
+
+    const metrics = metricsResult.length > 0 ? metricsResult[0].values[0] : [0, 1, 0];
+    const comp = compResult.length > 0 ? compResult[0].values[0] : [0, 1];
+
+    return {
+      averageExecutionTimeMs: (metrics[0] as number) || 0,
+      rpcSuccessRate: (metrics[1] as number) || 1,
+      averageRetries: (metrics[2] as number) || 0,
+      averageSlippageDifference: (comp[0] as number) || 0,
+      quoteAccuracy: (comp[1] as number) || 1,
     };
   }
 }

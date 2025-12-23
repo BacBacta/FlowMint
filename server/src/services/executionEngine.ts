@@ -5,22 +5,29 @@
  * Acts as the orchestrator between Jupiter service and on-chain program.
  */
 
-import { Connection, PublicKey, Keypair, VersionedTransaction, AccountMeta } from '@solana/web3.js';
+import { PublicKey } from '@solana/web3.js';
 import { v4 as uuidv4 } from 'uuid';
 
 import { config } from '../config/index.js';
+import { DatabaseService } from '../db/database.js';
 import {
   isTokenAllowed,
   calculateRiskLevel,
   RiskLevel,
   SLIPPAGE_SETTINGS,
   PRICE_IMPACT_THRESHOLDS,
-  SIZE_LIMITS,
 } from '../config/risk-policies.js';
 import { logger } from '../utils/logger.js';
+
+import { flowMintOnChainService } from './flowMintOnChain.js';
 import { jupiterService, QuoteResponse, JupiterError } from './jupiterService.js';
-import { flowMintOnChainService, FLOWMINT_PROGRAM_ID } from './flowMintOnChain.js';
-import { DatabaseService } from '../db/database.js';
+import { rpcManager } from './rpcManager.js';
+
+/**
+ * Execution mode for speed/reliability tradeoff
+ */
+export type ExecutionMode = 'fast' | 'standard' | 'protected';
+
 
 /**
  * Swap request from client
@@ -38,6 +45,8 @@ export interface SwapExecutionRequest {
   slippageBps: number;
   /** Whether to use protected mode */
   protectedMode?: boolean;
+  /** Execution mode: fast (higher fees), standard, protected (stricter limits) */
+  executionMode?: ExecutionMode;
   /** Optional: exact output mode */
   exactOut?: boolean;
   /** Optional: skip policy validation (for advanced users) */
@@ -117,12 +126,22 @@ const DEFAULT_RETRY_CONFIG: RetryConfig = {
 };
 
 /**
- * Alternative RPC endpoints for failover
+ * Priority fee settings by execution mode
  */
-const FALLBACK_RPC_ENDPOINTS = [
-  'https://api.mainnet-beta.solana.com',
-  'https://solana-api.projectserum.com',
-];
+const PRIORITY_FEE_SETTINGS = {
+  fast: {
+    prioritizationFeeLamports: 100000, // 0.0001 SOL
+    computeUnitPrice: 50000, // micro-lamports
+  },
+  standard: {
+    prioritizationFeeLamports: 'auto' as const,
+    computeUnitPrice: undefined,
+  },
+  protected: {
+    prioritizationFeeLamports: 'auto' as const,
+    computeUnitPrice: undefined,
+  },
+};
 
 /**
  * Execution Engine
@@ -131,13 +150,14 @@ const FALLBACK_RPC_ENDPOINTS = [
  * and receipt management.
  */
 export class ExecutionEngine {
-  private readonly connection: Connection;
   private readonly log = logger.child({ service: 'ExecutionEngine' });
-  private currentRpcIndex = 0;
+  private executionStartTime: number = 0;
+  private retryCount: number = 0;
 
   constructor(private readonly db: DatabaseService) {
-    this.connection = new Connection(config.solana.rpcUrl, config.solana.commitment);
-    this.log.info('ExecutionEngine initialized');
+    // Start RPC manager health monitoring
+    rpcManager.start();
+    this.log.info('ExecutionEngine initialized with RPC failover');
   }
 
   /**
@@ -155,6 +175,12 @@ export class ExecutionEngine {
   async executeSwap(request: SwapExecutionRequest): Promise<SwapExecutionResult> {
     const receiptId = uuidv4();
     const timestamp = Date.now();
+    this.executionStartTime = timestamp;
+    this.retryCount = 0;
+
+    // Determine execution mode
+    const executionMode = request.executionMode || (request.protectedMode ? 'protected' : 'standard');
+    const prioritySettings = PRIORITY_FEE_SETTINGS[executionMode];
 
     this.log.info(
       {
@@ -164,7 +190,7 @@ export class ExecutionEngine {
         outputMint: request.outputMint,
         amount: request.amount,
         slippageBps: request.slippageBps,
-        protectedMode: request.protectedMode,
+        executionMode,
       },
       'Starting swap execution'
     );
@@ -183,7 +209,7 @@ export class ExecutionEngine {
         );
       }
 
-      // Step 2: Get quote with retry
+      // Step 2: Get quote with retry (using RPC failover)
       const quote = await this.getQuoteWithRetry(request);
 
       // Step 3: Validate quote against policies
@@ -198,12 +224,13 @@ export class ExecutionEngine {
         );
       }
 
-      // Step 4: Get swap transaction
+      // Step 4: Get swap transaction with appropriate priority
       const swap = await jupiterService.getSwapTransaction({
         quoteResponse: quote,
         userPublicKey: request.userPublicKey,
         wrapAndUnwrapSol: true,
-        prioritizationFeeLamports: 'auto',
+        prioritizationFeeLamports: prioritySettings.prioritizationFeeLamports,
+        computeUnitPriceMicroLamports: prioritySettings.computeUnitPrice,
       });
 
       let finalTransaction = swap.swapTransaction;
@@ -520,15 +547,112 @@ export class ExecutionEngine {
   }
 
   /**
-   * Update receipt after transaction confirmation
+   * Update receipt after transaction confirmation with comparison metrics
    */
   async updateReceiptStatus(
     receiptId: string,
     status: 'success' | 'failed',
     txSignature?: string,
-    error?: string
+    error?: string,
+    actualOutput?: string
   ): Promise<void> {
     await this.db.updateReceiptStatus(receiptId, status, txSignature, error);
+
+    // If we have actual output, calculate and store comparison
+    if (status === 'success' && actualOutput) {
+      const receipt = await this.db.getReceipt(receiptId);
+      if (receipt) {
+        const estimatedOutput = BigInt(receipt.outAmount);
+        const actual = BigInt(actualOutput);
+        const difference = actual - estimatedOutput;
+        const differencePercent = estimatedOutput > 0n
+          ? Number(difference * 10000n / estimatedOutput) / 100
+          : 0;
+
+        // Calculate actual slippage
+        const actualSlippage = estimatedOutput > 0n
+          ? Number((estimatedOutput - actual) * 10000n / estimatedOutput) / 100
+          : 0;
+
+        const executionTimeMs = Date.now() - receipt.timestamp;
+
+        await this.db.saveReceiptComparison({
+          receiptId,
+          estimatedOutput: receipt.outAmount,
+          actualOutput,
+          difference: difference.toString(),
+          differencePercent,
+          slippageUsed: receipt.slippageBps,
+          actualSlippage,
+          executionTimeMs,
+          retryCount: this.retryCount,
+        });
+
+        // Save execution metric
+        await this.db.saveExecutionMetric({
+          receiptId,
+          rpcEndpoint: config.solana.rpcUrl,
+          success: true,
+          latencyMs: executionTimeMs,
+          retryCount: this.retryCount,
+        });
+
+        this.log.info(
+          {
+            receiptId,
+            estimated: receipt.outAmount,
+            actual: actualOutput,
+            differencePercent: differencePercent.toFixed(2) + '%',
+          },
+          'Receipt comparison saved'
+        );
+      }
+    } else if (status === 'failed') {
+      // Save failed execution metric
+      await this.db.saveExecutionMetric({
+        receiptId,
+        rpcEndpoint: config.solana.rpcUrl,
+        success: false,
+        latencyMs: Date.now() - this.executionStartTime,
+        retryCount: this.retryCount,
+        errorType: error,
+      });
+    }
+  }
+
+  /**
+   * Confirm transaction and fetch actual output
+   */
+  async confirmAndCompare(
+    receiptId: string,
+    txSignature: string,
+    userOutputAccount: string
+  ): Promise<{ success: boolean; actualOutput?: string; comparison?: any }> {
+    try {
+      const connection = rpcManager.getConnection();
+
+      // Confirm transaction
+      const confirmation = await connection.confirmTransaction(txSignature, 'confirmed');
+
+      if (confirmation.value.err) {
+        await this.updateReceiptStatus(receiptId, 'failed', txSignature, 'Transaction failed on-chain');
+        return { success: false };
+      }
+
+      // Fetch actual output balance
+      const accountInfo = await connection.getTokenAccountBalance(new PublicKey(userOutputAccount));
+      const actualOutput = accountInfo.value.amount;
+
+      await this.updateReceiptStatus(receiptId, 'success', txSignature, undefined, actualOutput);
+
+      const comparison = await this.db.getReceiptComparison(receiptId);
+
+      return { success: true, actualOutput, comparison };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      await this.updateReceiptStatus(receiptId, 'failed', txSignature, message);
+      return { success: false };
+    }
   }
 
   /**
