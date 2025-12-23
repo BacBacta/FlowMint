@@ -3,6 +3,7 @@
  *
  * Manages DCA (Dollar-Cost Averaging) and stop-loss intents.
  * Uses cron scheduling and Pyth oracle for price monitoring.
+ * Integrates JobLockService for idempotent execution.
  */
 
 import { CronJob } from 'cron';
@@ -13,6 +14,8 @@ import { logger } from '../utils/logger.js';
 import { DatabaseService } from '../db/database.js';
 import { ExecutionEngine } from './executionEngine.js';
 import { NotificationService, NotificationType, NotificationPriority } from './notificationService.js';
+import { JobLockService, JobStatus } from './jobLockService.js';
+import { OracleService, PYTH_FEED_IDS, STALENESS_THRESHOLDS } from './oracleService.js';
 
 // Helper to safely notify (logs warning if service not initialized)
 async function safeNotify(
@@ -135,16 +138,27 @@ interface PythPriceData {
  * Intent Scheduler Service
  *
  * Handles scheduling and execution of DCA and stop-loss orders.
+ * Uses JobLockService for idempotent execution to prevent double-execution.
+ * Uses OracleService for validated Pyth price feeds.
  */
 export class IntentScheduler {
   private readonly log = logger.child({ service: 'IntentScheduler' });
   private executionEngine: ExecutionEngine;
+  private jobLockService: JobLockService;
+  private oracleService: OracleService;
   private dcaJob?: CronJob;
   private stopLossJob?: CronJob;
   private isRunning = false;
 
+  /** Job window size for DCA (1 minute) */
+  private readonly DCA_JOB_WINDOW_MS = 60000;
+  /** Job window size for stop-loss (10 seconds) */
+  private readonly STOP_LOSS_JOB_WINDOW_MS = 10000;
+
   constructor(private readonly db: DatabaseService) {
     this.executionEngine = new ExecutionEngine(db);
+    this.jobLockService = new JobLockService(db);
+    this.oracleService = new OracleService();
   }
 
   /**
@@ -156,7 +170,13 @@ export class IntentScheduler {
       return;
     }
 
-    this.log.info('Starting intent scheduler');
+    this.log.info('Starting intent scheduler with JobLock integration');
+
+    // Reset any stuck jobs from previous run
+    const resetCount = await this.jobLockService.resetStuckJobs();
+    if (resetCount > 0) {
+      this.log.info({ resetCount }, 'Reset stuck jobs from previous run');
+    }
 
     // DCA job - runs every minute to check for pending DCA executions
     this.dcaJob = new CronJob(
@@ -177,7 +197,7 @@ export class IntentScheduler {
     );
 
     this.isRunning = true;
-    this.log.info('Intent scheduler started');
+    this.log.info('Intent scheduler started with idempotent execution');
   }
 
   /**
@@ -286,7 +306,7 @@ export class IntentScheduler {
   }
 
   /**
-   * Process DCA intents
+   * Process DCA intents with idempotent job locking
    */
   private async processDCAIntents(): Promise<void> {
     try {
@@ -295,7 +315,23 @@ export class IntentScheduler {
 
       for (const intent of activeIntents) {
         if (intent.nextExecutionAt && intent.nextExecutionAt <= now) {
-          await this.executeDCASlice(intent);
+          // Try to acquire lock for this job
+          const lockResult = await this.jobLockService.acquireLock(
+            intent.id,
+            intent.nextExecutionAt,
+            this.DCA_JOB_WINDOW_MS
+          );
+
+          if (!lockResult.acquired) {
+            this.log.debug(
+              { intentId: intent.id, reason: lockResult.reason },
+              'Skipping DCA - lock not acquired'
+            );
+            continue;
+          }
+
+          // Execute with lock protection
+          await this.executeDCASliceWithLock(intent, lockResult.jobId!);
         }
       }
     } catch (error) {
@@ -304,7 +340,99 @@ export class IntentScheduler {
   }
 
   /**
-   * Execute a single DCA slice
+   * Execute a single DCA slice with job lock protection
+   */
+  private async executeDCASliceWithLock(intent: Intent, jobId: string): Promise<void> {
+    this.log.info({ intentId: intent.id, jobId }, 'Executing DCA slice with job lock');
+
+    try {
+      const amountToSwap = intent.amountPerSwap || intent.remainingAmount;
+
+      const result = await this.executionEngine.executeSwap({
+        userPublicKey: intent.userPublicKey,
+        inputMint: intent.tokenFrom,
+        outputMint: intent.tokenTo,
+        amount: amountToSwap,
+        slippageBps: intent.slippageBps,
+        protectedMode: true, // Use protected mode for automated trades
+      });
+
+      if (result.status === 'failed') {
+        // Release lock with failure
+        await this.jobLockService.releaseLock(jobId, {
+          success: false,
+          error: result.error,
+        });
+
+        this.log.error(
+          { intentId: intent.id, jobId, error: result.error },
+          'DCA slice failed'
+        );
+
+        await safeNotify(
+          intent.userPublicKey,
+          NotificationType.DCA_FAILED,
+          'DCA Execution Failed',
+          `DCA slice #${intent.executionCount + 1} failed: ${result.error}`,
+          { intentId: intent.id, error: result.error },
+          NotificationPriority.HIGH
+        );
+      } else {
+        // Release lock with success
+        await this.jobLockService.releaseLock(jobId, {
+          success: true,
+          receiptId: result.receiptId,
+        });
+
+        await safeNotify(
+          intent.userPublicKey,
+          NotificationType.DCA_EXECUTED,
+          'DCA Executed',
+          `DCA slice #${intent.executionCount + 1} completed: ${amountToSwap} swapped`,
+          { intentId: intent.id, amountSwapped: amountToSwap },
+          NotificationPriority.LOW
+        );
+
+        // Update remaining amount
+        const remaining = BigInt(intent.remainingAmount) - BigInt(amountToSwap);
+        const now = Date.now();
+
+        if (remaining <= 0n) {
+          await this.db.updateIntentStatus(intent.id, IntentStatus.COMPLETED);
+          this.log.info({ intentId: intent.id }, 'DCA intent completed');
+
+          await safeNotify(
+            intent.userPublicKey,
+            NotificationType.DCA_COMPLETED,
+            'DCA Completed',
+            `Your DCA plan completed successfully after ${intent.executionCount + 1} executions.`,
+            { intentId: intent.id, intentType: 'DCA' },
+            NotificationPriority.MEDIUM
+          );
+        } else {
+          const nextExecution = now + (intent.intervalSeconds || 0) * 1000;
+          await this.db.updateIntent(intent.id, {
+            remainingAmount: remaining.toString(),
+            executionCount: intent.executionCount + 1,
+            lastExecutionAt: now,
+            nextExecutionAt: nextExecution,
+            updatedAt: now,
+          });
+        }
+      }
+    } catch (error) {
+      // Release lock with error
+      await this.jobLockService.releaseLock(jobId, {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+
+      this.log.error({ intentId: intent.id, jobId, error }, 'Error executing DCA slice');
+    }
+  }
+
+  /**
+   * Execute a single DCA slice (legacy method - kept for backwards compatibility)
    */
   private async executeDCASlice(intent: Intent): Promise<void> {
     this.log.info({ intentId: intent.id }, 'Executing DCA slice');
@@ -383,7 +511,7 @@ export class IntentScheduler {
   }
 
   /**
-   * Process stop-loss intents
+   * Process stop-loss intents using OracleService for validated prices
    */
   private async processStopLossIntents(): Promise<void> {
     try {
@@ -391,29 +519,65 @@ export class IntentScheduler {
 
       if (activeIntents.length === 0) return;
 
-      // Group intents by price feed
-      const intentsByFeed = new Map<string, Intent[]>();
+      // Process each intent with OracleService validation
       for (const intent of activeIntents) {
-        if (!intent.priceFeedId) continue;
+        if (!intent.priceFeedId || !intent.priceThreshold || !intent.priceDirection) {
+          continue;
+        }
 
-        const existing = intentsByFeed.get(intent.priceFeedId) || [];
-        existing.push(intent);
-        intentsByFeed.set(intent.priceFeedId, existing);
-      }
+        // Use OracleService for validated price check
+        const priceCheck = await this.oracleService.checkStopLossTrigger(
+          intent.priceFeedId,
+          intent.priceThreshold,
+          intent.priceDirection
+        );
 
-      // Fetch prices for all feeds
-      const feedIds = Array.from(intentsByFeed.keys());
-      const prices = await this.fetchPythPrices(feedIds);
+        if (!priceCheck.canExecute) {
+          this.log.debug(
+            {
+              intentId: intent.id,
+              reason: priceCheck.reason,
+              priceAge: priceCheck.price?.ageSeconds,
+            },
+            'Stop-loss price check failed'
+          );
+          continue;
+        }
 
-      // Check each intent against current price
-      for (const [feedId, intents] of intentsByFeed) {
-        const priceData = prices.get(feedId);
-        if (!priceData) continue;
+        if (priceCheck.triggered) {
+          // Try to acquire lock for this stop-loss execution
+          const lockResult = await this.jobLockService.acquireLock(
+            intent.id,
+            Date.now(),
+            this.STOP_LOSS_JOB_WINDOW_MS
+          );
 
-        const currentPrice = this.parsePythPrice(priceData);
+          if (!lockResult.acquired) {
+            this.log.debug(
+              { intentId: intent.id, reason: lockResult.reason },
+              'Skipping stop-loss - lock not acquired'
+            );
+            continue;
+          }
 
-        for (const intent of intents) {
-          await this.checkStopLossTrigger(intent, currentPrice);
+          this.log.info(
+            {
+              intentId: intent.id,
+              jobId: lockResult.jobId,
+              currentPrice: priceCheck.price.price,
+              threshold: intent.priceThreshold,
+              direction: intent.priceDirection,
+              priceAge: priceCheck.price.ageSeconds,
+              confidence: priceCheck.price.confidencePct,
+            },
+            'Stop-loss triggered with validated oracle price'
+          );
+
+          await this.executeStopLossWithLock(
+            intent,
+            priceCheck.price.price,
+            lockResult.jobId!
+          );
         }
       }
     } catch (error) {
@@ -422,7 +586,8 @@ export class IntentScheduler {
   }
 
   /**
-   * Check if a stop-loss should be triggered
+   * Check if a stop-loss should be triggered (with job locking)
+   * @deprecated Use processStopLossIntents which integrates OracleService
    */
   private async checkStopLossTrigger(intent: Intent, currentPrice: number): Promise<void> {
     if (!intent.priceThreshold || !intent.priceDirection) return;
@@ -432,22 +597,114 @@ export class IntentScheduler {
       (intent.priceDirection === 'above' && currentPrice >= intent.priceThreshold);
 
     if (shouldTrigger) {
+      // Try to acquire lock for this stop-loss execution
+      const lockResult = await this.jobLockService.acquireLock(
+        intent.id,
+        Date.now(),
+        this.STOP_LOSS_JOB_WINDOW_MS
+      );
+
+      if (!lockResult.acquired) {
+        this.log.debug(
+          { intentId: intent.id, reason: lockResult.reason },
+          'Skipping stop-loss - lock not acquired'
+        );
+        return;
+      }
+
       this.log.info(
         {
           intentId: intent.id,
+          jobId: lockResult.jobId,
           currentPrice,
           threshold: intent.priceThreshold,
           direction: intent.priceDirection,
         },
-        'Stop-loss triggered'
+        'Stop-loss triggered with job lock'
       );
 
-      await this.executeStopLoss(intent, currentPrice);
+      await this.executeStopLossWithLock(intent, currentPrice, lockResult.jobId!);
     }
   }
 
   /**
-   * Execute stop-loss swap
+   * Execute stop-loss swap with job lock protection
+   */
+  private async executeStopLossWithLock(
+    intent: Intent,
+    currentPrice: number,
+    jobId: string
+  ): Promise<void> {
+    try {
+      const result = await this.executionEngine.executeSwap({
+        userPublicKey: intent.userPublicKey,
+        inputMint: intent.tokenFrom,
+        outputMint: intent.tokenTo,
+        amount: intent.remainingAmount,
+        slippageBps: intent.slippageBps,
+        protectedMode: true,
+      });
+
+      if (result.status === 'failed') {
+        await this.jobLockService.releaseLock(jobId, {
+          success: false,
+          error: result.error,
+        });
+
+        this.log.error(
+          { intentId: intent.id, jobId, error: result.error },
+          'Stop-loss execution failed'
+        );
+        await this.db.updateIntentStatus(intent.id, IntentStatus.FAILED);
+
+        await safeNotify(
+          intent.userPublicKey,
+          NotificationType.STOP_LOSS_FAILED,
+          'Stop-Loss Failed',
+          `Stop-loss execution failed: ${result.error}`,
+          { intentId: intent.id, triggerPrice: intent.priceThreshold, currentPrice, error: result.error },
+          NotificationPriority.URGENT
+        );
+      } else {
+        await this.jobLockService.releaseLock(jobId, {
+          success: true,
+          receiptId: result.receiptId,
+        });
+
+        await this.db.updateIntentStatus(intent.id, IntentStatus.COMPLETED);
+        this.log.info({ intentId: intent.id, jobId }, 'Stop-loss executed successfully');
+
+        await safeNotify(
+          intent.userPublicKey,
+          NotificationType.STOP_LOSS_EXECUTED,
+          'Stop-Loss Executed',
+          `Stop-loss executed successfully at price ${currentPrice}`,
+          { intentId: intent.id, triggerPrice: intent.priceThreshold, currentPrice },
+          NotificationPriority.HIGH
+        );
+      }
+    } catch (error) {
+      await this.jobLockService.releaseLock(jobId, {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+
+      this.log.error({ intentId: intent.id, jobId, error }, 'Error executing stop-loss');
+      await this.db.updateIntentStatus(intent.id, IntentStatus.FAILED);
+
+      await safeNotify(
+        intent.userPublicKey,
+        NotificationType.STOP_LOSS_FAILED,
+        'Stop-Loss Error',
+        `Stop-loss error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        { intentId: intent.id, triggerPrice: intent.priceThreshold, currentPrice },
+        NotificationPriority.URGENT
+      );
+    }
+  }
+
+  /**
+   * Execute stop-loss swap (legacy - kept for backwards compatibility)
    */
   private async executeStopLoss(intent: Intent, currentPrice: number): Promise<void> {
     try {

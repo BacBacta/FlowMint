@@ -480,4 +480,48 @@ export class ReceiptService {
   clearAllState(): void {
     executionState.clear();
   }
+
+  /**
+   * Create a receipt (convenience method for ExecutionEngine integration)
+   * Returns an EnhancedReceipt with full tracking capabilities
+   */
+  async createReceipt(
+    request: ReceiptRequest,
+    quote: ReceiptQuote,
+    riskAssessment: { level: RiskSignal; reasons: RiskReason[]; blockedInProtectedMode: boolean }
+  ): Promise<EnhancedReceipt> {
+    const pending = await this.createPendingReceipt(request, quote, riskAssessment);
+
+    return {
+      id: pending.receiptId,
+      receiptId: pending.receiptId,
+      request: pending.request,
+      quote: pending.quote,
+      risk: pending.risk,
+      status: 'pending',
+      createdAt: pending.createdAt,
+    };
+  }
+}
+
+/**
+ * Enhanced receipt for production tracking
+ */
+export interface EnhancedReceipt {
+  id: string;
+  receiptId: string;
+  request: ReceiptRequest;
+  quote: ReceiptQuote;
+  risk: ReceiptRisk;
+  status: 'pending' | 'building' | 'sending' | 'confirming' | 'confirmed' | 'failed';
+  createdAt: number;
+  confirmedAt?: number;
+  signature?: string;
+  actualOutput?: string;
+  comparison?: {
+    quotedAmount: string;
+    actualAmount: string;
+    deltaAmount: string;
+    deltaPct: string;
+  };
 }

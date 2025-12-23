@@ -99,6 +99,18 @@ Connect to \`/ws\` for real-time updates:
       name: 'User',
       description: 'User preferences and settings',
     },
+    {
+      name: 'Risk',
+      description: 'Risk assessment and protected mode',
+    },
+    {
+      name: 'Intents',
+      description: 'DCA and Stop-Loss intent management',
+    },
+    {
+      name: 'Oracle',
+      description: 'Price oracle data from Pyth',
+    },
   ],
   paths: {
     '/api/health': {
@@ -683,6 +695,338 @@ Connect to \`/ws\` for real-time updates:
                 },
               },
             },
+          },
+        },
+      },
+    },
+    // Intent endpoints (DCA and Stop-Loss)
+    '/api/intents': {
+      get: {
+        tags: ['Intents'],
+        summary: 'List user intents',
+        description: 'Get all DCA and Stop-Loss intents for the authenticated user',
+        operationId: 'listIntents',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'type',
+            in: 'query',
+            required: false,
+            schema: {
+              type: 'string',
+              enum: ['dca', 'stop_loss', 'limit_order'],
+            },
+          },
+          {
+            name: 'status',
+            in: 'query',
+            required: false,
+            schema: {
+              type: 'string',
+              enum: ['active', 'paused', 'completed', 'cancelled'],
+            },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'List of intents',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    intents: {
+                      type: 'array',
+                      items: { $ref: '#/components/schemas/Intent' },
+                    },
+                    total: { type: 'integer' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      post: {
+        tags: ['Intents'],
+        summary: 'Create DCA intent',
+        description: 'Create a new Dollar Cost Averaging intent',
+        operationId: 'createDCAIntent',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/CreateDCARequest' },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'DCA intent created',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Intent' },
+              },
+            },
+          },
+          '400': {
+            description: 'Invalid request',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/intents/stop-loss': {
+      post: {
+        tags: ['Intents'],
+        summary: 'Create Stop-Loss intent',
+        description: 'Create a new Stop-Loss intent with oracle price monitoring',
+        operationId: 'createStopLossIntent',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/CreateStopLossRequest' },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'Stop-Loss intent created',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Intent' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/intents/{id}': {
+      get: {
+        tags: ['Intents'],
+        summary: 'Get intent details',
+        operationId: 'getIntent',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Intent details',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Intent' },
+              },
+            },
+          },
+          '404': {
+            description: 'Intent not found',
+          },
+        },
+      },
+      delete: {
+        tags: ['Intents'],
+        summary: 'Cancel intent',
+        operationId: 'cancelIntent',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Intent cancelled',
+          },
+        },
+      },
+    },
+    '/api/intents/{id}/pause': {
+      post: {
+        tags: ['Intents'],
+        summary: 'Pause intent',
+        operationId: 'pauseIntent',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Intent paused',
+          },
+        },
+      },
+    },
+    '/api/intents/{id}/resume': {
+      post: {
+        tags: ['Intents'],
+        summary: 'Resume intent',
+        operationId: 'resumeIntent',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Intent resumed',
+          },
+        },
+      },
+    },
+    // Oracle endpoints
+    '/api/oracle/prices': {
+      get: {
+        tags: ['Oracle'],
+        summary: 'Get oracle prices',
+        description: 'Fetch current prices from Pyth oracle for specified feeds',
+        operationId: 'getOraclePrices',
+        parameters: [
+          {
+            name: 'feedIds',
+            in: 'query',
+            required: true,
+            description: 'Comma-separated list of Pyth price feed IDs',
+            schema: {
+              type: 'string',
+              example: 'ef0d8b6f...,ff61491a...',
+            },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Oracle price data',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    prices: {
+                      type: 'array',
+                      items: { $ref: '#/components/schemas/OraclePrice' },
+                    },
+                    fetchedAt: { type: 'string', format: 'date-time' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/oracle/check-trigger': {
+      post: {
+        tags: ['Oracle'],
+        summary: 'Check stop-loss trigger',
+        description: 'Check if a stop-loss condition would be triggered at current price',
+        operationId: 'checkStopLossTrigger',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['feedId', 'threshold', 'direction'],
+                properties: {
+                  feedId: { type: 'string' },
+                  threshold: { type: 'number' },
+                  direction: { type: 'string', enum: ['above', 'below'] },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Trigger check result',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/StopLossTriggerCheck' },
+              },
+            },
+          },
+        },
+      },
+    },
+    // Risk Assessment endpoint
+    '/api/risk/assess': {
+      post: {
+        tags: ['Risk'],
+        summary: 'Assess swap risk',
+        description: 'Get risk assessment for a swap quote using traffic light system',
+        operationId: 'assessRisk',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/SwapQuote' },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Risk assessment',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/RiskAssessment' },
+              },
+            },
+          },
+        },
+      },
+    },
+    // Receipts endpoint
+    '/api/receipts/{signature}': {
+      get: {
+        tags: ['Swap'],
+        summary: 'Get transaction receipt',
+        description: 'Get enhanced receipt for a completed swap transaction',
+        operationId: 'getReceipt',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'signature',
+            in: 'path',
+            required: true,
+            description: 'Solana transaction signature',
+            schema: { type: 'string' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Transaction receipt',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/EnhancedReceipt' },
+              },
+            },
+          },
+          '404': {
+            description: 'Receipt not found',
           },
         },
       },
@@ -1377,6 +1721,213 @@ Connect to \`/ws\` for real-time updates:
               },
             },
           },
+        },
+      },
+      // Risk Assessment schemas
+      RiskAssessment: {
+        type: 'object',
+        description: 'Risk assessment for a swap quote using traffic light system',
+        properties: {
+          overallSignal: {
+            type: 'string',
+            enum: ['green', 'yellow', 'red'],
+            description: 'Overall risk signal: green (safe), yellow (caution), red (high risk)',
+          },
+          canProceed: {
+            type: 'boolean',
+            description: 'Whether the swap can proceed based on risk assessment',
+          },
+          requiresAcknowledgement: {
+            type: 'boolean',
+            description: 'Whether user must acknowledge risks before proceeding',
+          },
+          reasons: {
+            type: 'array',
+            items: {
+              $ref: '#/components/schemas/RiskReason',
+            },
+          },
+          scores: {
+            type: 'object',
+            properties: {
+              priceImpact: { type: 'string', enum: ['green', 'yellow', 'red'] },
+              slippage: { type: 'string', enum: ['green', 'yellow', 'red'] },
+              liquidity: { type: 'string', enum: ['green', 'yellow', 'red'] },
+              routeComplexity: { type: 'string', enum: ['green', 'yellow', 'red'] },
+            },
+          },
+        },
+        example: {
+          overallSignal: 'yellow',
+          canProceed: true,
+          requiresAcknowledgement: true,
+          reasons: [
+            {
+              factor: 'priceImpact',
+              signal: 'yellow',
+              message: 'Price impact of 1.5% is moderate',
+              value: 1.5,
+              threshold: 1,
+            },
+          ],
+        },
+      },
+      RiskReason: {
+        type: 'object',
+        properties: {
+          factor: {
+            type: 'string',
+            enum: ['priceImpact', 'slippage', 'liquidity', 'routeComplexity', 'amount'],
+          },
+          signal: { type: 'string', enum: ['green', 'yellow', 'red'] },
+          message: { type: 'string' },
+          value: { type: 'number' },
+          threshold: { type: 'number' },
+        },
+      },
+      // Enhanced Receipt schemas
+      EnhancedReceipt: {
+        type: 'object',
+        description: 'Detailed execution receipt with all transaction data',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          signature: { type: 'string', description: 'Solana transaction signature' },
+          inputMint: { type: 'string' },
+          outputMint: { type: 'string' },
+          inputAmount: { type: 'string' },
+          outputAmount: { type: 'string' },
+          fees: {
+            $ref: '#/components/schemas/TransactionFees',
+          },
+          riskAssessment: {
+            $ref: '#/components/schemas/RiskAssessment',
+          },
+          executionTimeMs: { type: 'integer' },
+          status: { type: 'string', enum: ['pending', 'confirmed', 'failed'] },
+          confirmations: { type: 'integer' },
+          slot: { type: 'integer' },
+          blockTime: { type: 'integer' },
+          createdAt: { type: 'string', format: 'date-time' },
+        },
+        example: {
+          id: '123e4567-e89b-12d3-a456-426614174000',
+          signature: '5wHu1qwD7...',
+          inputMint: 'So11111111111111111111111111111111111111112',
+          outputMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+          inputAmount: '1000000000',
+          outputAmount: '100000000',
+          executionTimeMs: 2500,
+          status: 'confirmed',
+        },
+      },
+      TransactionFees: {
+        type: 'object',
+        properties: {
+          networkFee: { type: 'integer', description: 'Base network fee in lamports' },
+          priorityFee: { type: 'integer', description: 'Priority fee in lamports' },
+          jupiterFee: { type: 'integer', description: 'Jupiter platform fee in lamports' },
+          totalFee: { type: 'integer' },
+        },
+      },
+      // Intent schemas
+      Intent: {
+        type: 'object',
+        description: 'A scheduled trading intent (DCA or Stop-Loss)',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          userId: { type: 'string' },
+          type: { type: 'string', enum: ['dca', 'stop_loss', 'limit_order'] },
+          status: { type: 'string', enum: ['active', 'paused', 'completed', 'cancelled', 'failed'] },
+          inputMint: { type: 'string' },
+          outputMint: { type: 'string' },
+          totalAmount: { type: 'string' },
+          remainingAmount: { type: 'string' },
+          // DCA specific
+          sliceCount: { type: 'integer' },
+          completedSlices: { type: 'integer' },
+          intervalSeconds: { type: 'integer' },
+          // Stop-Loss specific
+          priceFeedId: { type: 'string', description: 'Pyth price feed ID' },
+          priceThreshold: { type: 'number' },
+          priceDirection: { type: 'string', enum: ['above', 'below'] },
+          createdAt: { type: 'string', format: 'date-time' },
+          updatedAt: { type: 'string', format: 'date-time' },
+          nextExecutionAt: { type: 'string', format: 'date-time' },
+        },
+      },
+      CreateDCARequest: {
+        type: 'object',
+        required: ['inputMint', 'outputMint', 'totalAmount', 'sliceCount', 'intervalSeconds'],
+        properties: {
+          inputMint: { type: 'string' },
+          outputMint: { type: 'string' },
+          totalAmount: { type: 'string' },
+          sliceCount: { type: 'integer', minimum: 2, maximum: 100 },
+          intervalSeconds: { type: 'integer', minimum: 60, maximum: 2592000 },
+          slippageBps: { type: 'integer', minimum: 0, maximum: 5000, default: 50 },
+        },
+      },
+      CreateStopLossRequest: {
+        type: 'object',
+        required: ['inputMint', 'outputMint', 'amount', 'priceFeedId', 'priceThreshold', 'priceDirection'],
+        properties: {
+          inputMint: { type: 'string' },
+          outputMint: { type: 'string' },
+          amount: { type: 'string' },
+          priceFeedId: { type: 'string', description: 'Pyth price feed ID for monitoring' },
+          priceThreshold: { type: 'number', description: 'Trigger price in USD' },
+          priceDirection: { type: 'string', enum: ['above', 'below'] },
+          slippageBps: { type: 'integer', default: 100 },
+        },
+      },
+      // Oracle schemas
+      OraclePrice: {
+        type: 'object',
+        description: 'Price data from Pyth oracle',
+        properties: {
+          feedId: { type: 'string' },
+          price: { type: 'number' },
+          confidence: { type: 'number' },
+          confidencePct: { type: 'number' },
+          publishTime: { type: 'integer' },
+          ageSeconds: { type: 'integer' },
+          isStale: { type: 'boolean' },
+          hasLowConfidence: { type: 'boolean' },
+        },
+        example: {
+          feedId: 'ef0d8b6f...',
+          price: 150.25,
+          confidence: 0.15,
+          confidencePct: 0.1,
+          publishTime: 1705312200,
+          ageSeconds: 5,
+          isStale: false,
+          hasLowConfidence: false,
+        },
+      },
+      StopLossTriggerCheck: {
+        type: 'object',
+        properties: {
+          canExecute: { type: 'boolean' },
+          triggered: { type: 'boolean' },
+          reason: { type: 'string' },
+          price: {
+            $ref: '#/components/schemas/OraclePrice',
+          },
+        },
+      },
+      // Job Lock schemas (for admin/debug)
+      JobLock: {
+        type: 'object',
+        description: 'Job lock for idempotent intent execution',
+        properties: {
+          jobId: { type: 'string' },
+          intentId: { type: 'string' },
+          windowStart: { type: 'integer' },
+          status: { type: 'string', enum: ['processing', 'completed', 'failed'] },
+          createdAt: { type: 'string', format: 'date-time' },
+          completedAt: { type: 'string', format: 'date-time' },
+          txSignature: { type: 'string' },
         },
       },
     },

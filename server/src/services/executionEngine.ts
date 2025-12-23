@@ -3,6 +3,13 @@
  *
  * Core module that validates policies, executes swaps, and manages receipts.
  * Acts as the orchestrator between Jupiter service and on-chain program.
+ *
+ * Integrates:
+ * - RetryPolicy for intelligent error handling and retry decisions
+ * - RiskScoring for comprehensive risk assessment
+ * - FeeEstimator for dynamic priority fee calculation
+ * - TxConfirm for robust transaction confirmation
+ * - ReceiptService for detailed execution tracking
  */
 
 import { PublicKey } from '@solana/web3.js';
@@ -22,6 +29,38 @@ import { logger } from '../utils/logger.js';
 import { flowMintOnChainService } from './flowMintOnChain.js';
 import { jupiterService, QuoteResponse, JupiterError } from './jupiterService.js';
 import { rpcManager } from './rpcManager.js';
+
+// Import new production services
+import {
+  classifyError,
+  shouldRetry,
+  createRetryState,
+  buildRetryMetrics,
+  EXECUTION_PROFILES,
+  ErrorCategory,
+  RetryState,
+  RetryStrategy,
+  RetryMetrics,
+  sleep as retrySleep,
+} from './retryPolicy.js';
+import {
+  RiskScoringService,
+  RiskSignal,
+  RiskAssessment,
+} from './riskScoring.js';
+import {
+  feeEstimator,
+  ExecutionProfile as FeeProfile,
+  FeeEstimate,
+} from './feeEstimator.js';
+import {
+  txConfirmService,
+  ConfirmationResult,
+} from './txConfirm.js';
+import {
+  ReceiptService,
+  EnhancedReceipt,
+} from './receiptService.js';
 
 /**
  * Execution mode for speed/reliability tradeoff
@@ -144,6 +183,29 @@ const PRIORITY_FEE_SETTINGS = {
 };
 
 /**
+ * Map execution mode to fee profile
+ */
+const EXECUTION_MODE_TO_FEE_PROFILE: Record<ExecutionMode, FeeProfile> = {
+  fast: 'FAST',
+  standard: 'AUTO',
+  protected: 'CHEAP',
+};
+
+/**
+ * Extended swap execution result with production metrics
+ */
+export interface SwapExecutionResultExtended extends SwapExecutionResult {
+  /** Risk assessment details */
+  riskAssessment?: RiskAssessment;
+  /** Fee estimate used */
+  feeEstimate?: FeeEstimate;
+  /** Retry metrics if applicable */
+  retryMetrics?: RetryMetrics;
+  /** Enhanced receipt ID */
+  enhancedReceiptId?: string;
+}
+
+/**
  * Execution Engine
  *
  * Orchestrates swap execution with policy validation, retry logic,
@@ -154,10 +216,19 @@ export class ExecutionEngine {
   private executionStartTime: number = 0;
   private retryCount: number = 0;
 
+  // Production services
+  private readonly riskScoring: RiskScoringService;
+  private readonly receiptService: ReceiptService;
+
   constructor(private readonly db: DatabaseService) {
     // Start RPC manager health monitoring
     rpcManager.start();
-    this.log.info('ExecutionEngine initialized with RPC failover');
+
+    // Initialize production services
+    this.riskScoring = new RiskScoringService();
+    this.receiptService = new ReceiptService(db);
+
+    this.log.info('ExecutionEngine initialized with production services');
   }
 
   /**
@@ -178,9 +249,10 @@ export class ExecutionEngine {
     this.executionStartTime = timestamp;
     this.retryCount = 0;
 
-    // Determine execution mode
+    // Determine execution mode and profile
     const executionMode = request.executionMode || (request.protectedMode ? 'protected' : 'standard');
-    const prioritySettings = PRIORITY_FEE_SETTINGS[executionMode];
+    const feeProfile = EXECUTION_MODE_TO_FEE_PROFILE[executionMode];
+    const retryStrategy = EXECUTION_PROFILES[feeProfile === 'FAST' ? 'FAST' : 'AUTO'];
 
     this.log.info(
       {
@@ -191,9 +263,13 @@ export class ExecutionEngine {
         amount: request.amount,
         slippageBps: request.slippageBps,
         executionMode,
+        feeProfile,
       },
-      'Starting swap execution'
+      'Starting swap execution with production services'
     );
+
+    // Initialize retry state for intelligent retry handling
+    const retryState = createRetryState();
 
     try {
       // Step 1: Validate policies
@@ -209,35 +285,61 @@ export class ExecutionEngine {
         );
       }
 
-      // Step 2: Get quote with retry (using RPC failover)
-      const quote = await this.getQuoteWithRetry(request);
+      // Step 2: Get quote with intelligent retry
+      const quote = await this.getQuoteWithIntelligentRetry(request, retryStrategy, retryState);
 
-      // Step 3: Validate quote against policies
-      const quoteValidation = this.validateQuote(quote, request);
-      if (!quoteValidation.valid) {
+      // Step 3: Comprehensive risk assessment using RiskScoringService
+      const riskAssessment = await this.riskScoring.scoreSwap(
+        {
+          inputMint: request.inputMint,
+          outputMint: request.outputMint,
+          amountIn: request.amount,
+          slippageBps: request.slippageBps,
+          protectedMode: request.protectedMode || false,
+          quoteTimestamp: timestamp,
+        },
+        quote
+      );
+
+      // Block execution if risk is RED in protected mode
+      if (riskAssessment.blockedInProtectedMode) {
+        const reasons = riskAssessment.reasons.map(r => r.message).join('; ');
         return this.createFailedResult(
           receiptId,
-          quoteValidation.errors.join('; '),
-          quoteValidation.riskLevel,
-          [...validation.warnings, ...quoteValidation.warnings],
+          `Blocked by risk policy: ${reasons}`,
+          RiskLevel.CRITICAL,
+          [],
           timestamp
         );
       }
 
-      // Step 4: Get swap transaction with appropriate priority
+      // Step 4: Get dynamic fee estimate
+      const feeEstimate = await feeEstimator.estimateSwapFees(feeProfile);
+
+      this.log.debug(
+        {
+          receiptId,
+          priorityFee: feeEstimate.priorityFee,
+          congestion: feeEstimate.congestionLevel,
+          riskLevel: riskAssessment.level,
+        },
+        'Fee and risk assessment complete'
+      );
+
+      // Step 5: Get swap transaction with dynamic priority fees
       const swap = await jupiterService.getSwapTransaction({
         quoteResponse: quote,
         userPublicKey: request.userPublicKey,
         wrapAndUnwrapSol: true,
-        prioritizationFeeLamports: prioritySettings.prioritizationFeeLamports,
-        computeUnitPriceMicroLamports: prioritySettings.computeUnitPrice,
+        prioritizationFeeLamports: feeEstimate.priorityFee,
+        computeUnitPriceMicroLamports: feeEstimate.priorityFee,
       });
 
       let finalTransaction = swap.swapTransaction;
       let receiptPda: string | undefined;
       let routeData: string | undefined;
 
-      // Step 4b: Inject FlowMint instruction if using on-chain program
+      // Step 5b: Inject FlowMint instruction if using on-chain program
       if (request.useFlowMintProgram && request.userInputAccount && request.userOutputAccount) {
         const userPubkey = new PublicKey(request.userPublicKey);
         const routeBuffer = flowMintOnChainService.serializeRoute(quote);
@@ -281,7 +383,28 @@ export class ExecutionEngine {
         );
       }
 
-      // Step 5: Save receipt (pending)
+      // Step 6: Create enhanced receipt with production service
+      const enhancedReceipt = await this.receiptService.createReceipt(
+        {
+          inputMint: request.inputMint,
+          outputMint: request.outputMint,
+          amountIn: request.amount,
+          slippageBps: request.slippageBps,
+          mode: request.protectedMode ? 'protected' : 'standard',
+          profile: feeProfile,
+          userPublicKey: request.userPublicKey,
+        },
+        {
+          outAmount: quote.outAmount,
+          minOutAmount: quote.outAmount, // Could be calculated with slippage
+          priceImpactPct: quote.priceImpactPct,
+          routeSteps: quote.routePlan.length,
+          quoteTimestamp: timestamp,
+        },
+        riskAssessment
+      );
+
+      // Also save to legacy receipt table for compatibility
       await this.saveReceipt({
         receiptId,
         userPublicKey: request.userPublicKey,
@@ -296,23 +419,29 @@ export class ExecutionEngine {
         timestamp,
       });
 
-      // Calculate combined risk level
-      const riskLevel = calculateRiskLevel({
-        priceImpactPct: parseFloat(quote.priceImpactPct),
-        slippageBps: request.slippageBps,
-        tradeValueUsd: 0, // Would need price oracle for USD value
-      });
+      // Convert risk signal to risk level
+      const riskLevel = this.convertRiskSignalToLevel(riskAssessment.level);
 
-      const allWarnings = [...validation.warnings, ...quoteValidation.warnings];
+      // Build warnings from risk assessment reasons
+      const allWarnings = riskAssessment.reasons
+        .filter(r => r.severity === RiskSignal.AMBER)
+        .map(r => r.message);
+
+      // Build retry metrics
+      const retryMetrics = buildRetryMetrics(retryState, true);
 
       this.log.info(
         {
           receiptId,
+          enhancedReceiptId: enhancedReceipt.id,
           outAmount: quote.outAmount,
           priceImpactPct: quote.priceImpactPct,
-          riskLevel,
+          riskLevel: riskAssessment.level,
+          retryAttempts: retryMetrics.totalAttempts,
+          feeProfile,
+          priorityFee: feeEstimate.priorityFee,
         },
-        'Swap prepared successfully'
+        'Swap prepared successfully with production services'
       );
 
       return {
@@ -333,12 +462,157 @@ export class ExecutionEngine {
         timestamp,
         receiptPda,
         routeData,
-      };
+      } as SwapExecutionResultExtended;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      this.log.error({ receiptId, error }, 'Swap execution failed');
+
+      // Classify the error for metrics
+      const classifiedError = classifyError(error instanceof Error ? error : new Error(message));
+      const retryMetrics = buildRetryMetrics(retryState, false);
+
+      this.log.error(
+        {
+          receiptId,
+          errorCategory: classifiedError.category,
+          errorCode: classifiedError.code,
+          retryAttempts: retryMetrics.totalAttempts,
+        },
+        'Swap execution failed'
+      );
 
       return this.createFailedResult(receiptId, message, RiskLevel.HIGH, [], timestamp);
+    }
+  }
+
+  /**
+   * Convert RiskSignal to RiskLevel
+   */
+  private convertRiskSignalToLevel(signal: RiskSignal): RiskLevel {
+    switch (signal) {
+      case RiskSignal.GREEN:
+        return RiskLevel.LOW;
+      case RiskSignal.AMBER:
+        return RiskLevel.MEDIUM;
+      case RiskSignal.RED:
+        return RiskLevel.HIGH;
+      default:
+        return RiskLevel.MEDIUM;
+    }
+  }
+
+  /**
+   * Get quote with intelligent retry using RetryPolicy
+   */
+  private async getQuoteWithIntelligentRetry(
+    request: SwapExecutionRequest,
+    strategy: RetryStrategy,
+    state: RetryState
+  ): Promise<QuoteResponse> {
+    while (true) {
+      try {
+        state.attempts++;
+        state.lastAttemptTime = Date.now();
+
+        const quote = await jupiterService.quoteSwap({
+          inputMint: request.inputMint,
+          outputMint: request.outputMint,
+          amount: request.amount,
+          slippageBps: request.slippageBps,
+          swapMode: request.exactOut ? 'ExactOut' : 'ExactIn',
+        });
+
+        return quote;
+      } catch (error) {
+        const classifiedError = classifyError(error instanceof Error ? error : new Error(String(error)));
+        state.errors.push(classifiedError);
+
+        const retryDecision = shouldRetry(classifiedError, state, strategy);
+
+        if (!retryDecision.shouldRetry) {
+          this.log.error(
+            {
+              errorCode: classifiedError.code,
+              reason: retryDecision.reason,
+              attempts: state.attempts,
+            },
+            'Quote failed, not retrying'
+          );
+          throw classifiedError.originalError;
+        }
+
+        // If requote needed, increment counter
+        if (classifiedError.requiresRequote) {
+          state.requotes++;
+          // Increase slippage for requote if not in protected mode
+          if (!request.protectedMode) {
+            request.slippageBps = Math.min(
+              Math.round(request.slippageBps * 1.5),
+              SLIPPAGE_SETTINGS.ABSOLUTE_MAX_BPS
+            );
+          }
+        }
+
+        this.log.warn(
+          {
+            errorCode: classifiedError.code,
+            delayMs: retryDecision.delayMs,
+            attempt: state.attempts,
+            slippageBps: request.slippageBps,
+          },
+          'Quote failed, retrying'
+        );
+
+        this.retryCount++;
+        await retrySleep(retryDecision.delayMs);
+      }
+    }
+  }
+
+  /**
+   * Confirm transaction with robust handling and receipt update
+   */
+  async confirmTransactionWithReceipt(
+    receiptId: string,
+    signature: string,
+    userOutputAccount: string,
+    blockhashInfo?: { blockhash: string; lastValidBlockHeight: number }
+  ): Promise<{
+    confirmed: boolean;
+    result?: ConfirmationResult;
+    comparison?: any;
+  }> {
+    try {
+      // Use TxConfirmService for robust confirmation
+      const result = await txConfirmService.confirmTransaction(signature, {
+        commitment: 'confirmed',
+        timeoutMs: 60000,
+        blockhashInfo: blockhashInfo as any,
+      });
+
+      if (result.confirmed) {
+        // Transaction confirmed, update receipt with actual output
+        const { comparison } = await this.confirmAndCompare(
+          receiptId,
+          signature,
+          userOutputAccount
+        );
+
+        return { confirmed: true, result, comparison };
+      } else {
+        // Transaction failed
+        await this.updateReceiptStatus(
+          receiptId,
+          'failed',
+          signature,
+          result.error || 'Transaction not confirmed'
+        );
+
+        return { confirmed: false, result };
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      await this.updateReceiptStatus(receiptId, 'failed', signature, message);
+      return { confirmed: false };
     }
   }
 

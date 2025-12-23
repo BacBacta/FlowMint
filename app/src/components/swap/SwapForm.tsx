@@ -6,6 +6,15 @@ import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiClient } from '@/lib/api';
+import {
+  RiskBadge,
+  RiskBreakdown,
+  ProtectedToggle,
+  ExecutionStatus,
+  type RiskLevel,
+  type RiskReason,
+  type ExecutionStep,
+} from '@/components/risk';
 
 import { TokenSelector } from './TokenSelector';
 
@@ -36,6 +45,9 @@ export function SwapForm() {
   const [inputAmount, setInputAmount] = useState('');
   const [slippage, setSlippage] = useState(50); // 0.5% in bps
   const [showSettings, setShowSettings] = useState(false);
+  const [protectedMode, setProtectedMode] = useState(false);
+  const [riskAcknowledged, setRiskAcknowledged] = useState(false);
+  const [executionSteps, setExecutionSteps] = useState<ExecutionStep[]>([]);
 
   // Debounced quote fetch
   const debouncedAmount = useDebounce(inputAmount, 500);
@@ -71,21 +83,43 @@ export function SwapForm() {
         throw new Error('Wallet not connected or no quote');
       }
 
+      // Reset and start execution tracking
+      setExecutionSteps([
+        { id: 'prepare', label: 'Preparing transaction', status: 'current' },
+        { id: 'sign', label: 'Waiting for signature', status: 'pending' },
+        { id: 'send', label: 'Sending transaction', status: 'pending' },
+        { id: 'confirm', label: 'Confirming on-chain', status: 'pending' },
+      ]);
+
       // Get swap transaction from server
+      setExecutionSteps(prev => prev.map(s => 
+        s.id === 'prepare' ? { ...s, status: 'completed' } :
+        s.id === 'sign' ? { ...s, status: 'current' } : s
+      ));
+
       const swapTx = await apiClient.executeSwap({
         userPublicKey: publicKey.toBase58(),
         inputMint: inputToken.mint,
         outputMint: outputToken.mint,
         amount: Math.floor(parseFloat(inputAmount) * 10 ** inputToken.decimals),
         slippageBps: slippage,
+        protectedMode,
       });
+
+      // Update execution steps after successful submission
+      setExecutionSteps(prev => prev.map(s => 
+        s.id === 'sign' ? { ...s, status: 'completed' } :
+        s.id === 'send' ? { ...s, status: 'current' } : s
+      ));
 
       return swapTx;
     },
     onSuccess: () => {
+      setExecutionSteps(prev => prev.map(s => ({ ...s, status: 'completed' as const })));
       queryClient.invalidateQueries({ queryKey: ['quote'] });
       queryClient.invalidateQueries({ queryKey: ['swapHistory'] });
       setInputAmount('');
+      setRiskAcknowledged(false);
     },
   });
 
@@ -107,10 +141,83 @@ export function SwapForm() {
     ? (parseFloat(quote.priceImpactPct) * 100).toFixed(2)
     : null;
 
+  // Calculate risk level based on quote
+  const calculateRiskLevel = (): RiskLevel => {
+    if (!quote) return 'GREEN';
+    const impact = parseFloat(quote.priceImpactPct) * 100;
+    if (impact > 3 || slippage > 300) return 'RED';
+    if (impact > 1 || slippage > 100) return 'AMBER';
+    return 'GREEN';
+  };
+
+  const riskLevel = calculateRiskLevel();
+
+  // Build risk reasons for display
+  const buildRiskReasons = (): RiskReason[] => {
+    const reasons: RiskReason[] = [];
+    if (!quote) return reasons;
+
+    const impact = parseFloat(quote.priceImpactPct) * 100;
+
+    if (impact > 3) {
+      reasons.push({
+        code: 'HIGH_PRICE_IMPACT',
+        severity: 'RED',
+        message: `Price impact is ${impact.toFixed(2)}%, which exceeds the 3% threshold`,
+      });
+    } else if (impact > 1) {
+      reasons.push({
+        code: 'MODERATE_PRICE_IMPACT',
+        severity: 'AMBER',
+        message: `Price impact of ${impact.toFixed(2)}% is notable`,
+      });
+    }
+
+    if (slippage > 300) {
+      reasons.push({
+        code: 'HIGH_SLIPPAGE',
+        severity: 'RED',
+        message: `Slippage tolerance of ${slippage / 100}% is very high`,
+      });
+    } else if (slippage > 100) {
+      reasons.push({
+        code: 'MODERATE_SLIPPAGE',
+        severity: 'AMBER',
+        message: `Slippage tolerance of ${slippage / 100}% is above normal`,
+      });
+    }
+
+    if (quote.routePlan?.length > 3) {
+      reasons.push({
+        code: 'COMPLEX_ROUTE',
+        severity: 'AMBER',
+        message: `Route has ${quote.routePlan.length} steps, which may increase fees`,
+      });
+    }
+
+    return reasons;
+  };
+
+  const riskReasons = buildRiskReasons();
+  const requiresAcknowledgement = riskLevel === 'AMBER' && !protectedMode;
+  const isBlocked = riskLevel === 'RED' && protectedMode;
+
   return (
     <div className="card">
+      {/* Protected Mode Toggle */}
+      <div className="mb-4">
+        <ProtectedToggle
+          enabled={protectedMode}
+          onToggle={setProtectedMode}
+          size="sm"
+        />
+      </div>
+
       {/* Settings Button */}
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex items-center justify-between">
+        {/* Risk Badge */}
+        {quote && <RiskBadge level={riskLevel} size="sm" />}
+        
         <button
           onClick={() => setShowSettings(!showSettings)}
           className="btn-ghost rounded-lg p-2"
@@ -258,6 +365,47 @@ export function SwapForm() {
         </div>
       )}
 
+      {/* Risk Breakdown */}
+      {quote && riskReasons.length > 0 && (
+        <div className="mt-4">
+          <RiskBreakdown
+            reasons={riskReasons}
+            level={riskLevel}
+            requiresAcknowledgement={requiresAcknowledgement}
+            onAcknowledge={() => setRiskAcknowledged(true)}
+            acknowledged={riskAcknowledged}
+          />
+        </div>
+      )}
+
+      {/* Blocked in Protected Mode Warning */}
+      {isBlocked && (
+        <div className="mt-4 rounded-lg bg-red-50 p-4 dark:bg-red-900/30">
+          <div className="flex items-start gap-3">
+            <span className="text-2xl">🛡️</span>
+            <div>
+              <p className="font-medium text-red-800 dark:text-red-200">
+                Blocked by Protected Mode
+              </p>
+              <p className="mt-1 text-sm text-red-700 dark:text-red-300">
+                This swap has been blocked because it exceeds the safety thresholds for protected mode.
+                Disable protected mode to proceed (at your own risk).
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Execution Status (during swap) */}
+      {swapMutation.isPending && executionSteps.length > 0 && (
+        <div className="mt-4">
+          <ExecutionStatus
+            steps={executionSteps}
+            variant="minimal"
+          />
+        </div>
+      )}
+
       {/* Error Message */}
       {quoteError && (
         <div className="mt-4 rounded-lg bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-400">
@@ -268,7 +416,13 @@ export function SwapForm() {
       {/* Swap Button */}
       <button
         onClick={() => swapMutation.mutate()}
-        disabled={!quote || swapMutation.isPending || !inputAmount}
+        disabled={
+          !quote || 
+          swapMutation.isPending || 
+          !inputAmount || 
+          isBlocked ||
+          (requiresAcknowledgement && !riskAcknowledged)
+        }
         className="btn-primary mt-6 w-full py-4 text-lg"
       >
         {swapMutation.isPending ? (
@@ -290,6 +444,10 @@ export function SwapForm() {
             </svg>
             Swapping...
           </span>
+        ) : isBlocked ? (
+          '🛡️ Blocked by Protected Mode'
+        ) : requiresAcknowledgement && !riskAcknowledged ? (
+          'Acknowledge Risks to Continue'
         ) : !inputAmount ? (
           'Enter an amount'
         ) : !quote ? (
