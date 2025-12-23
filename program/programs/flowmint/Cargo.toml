@@ -1,0 +1,26 @@
+[package]
+name = "flowmint"
+version = "0.1.0"
+description = "FlowMint - Execution layer over Jupiter on Solana"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/BacBacta/FlowMint"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "flowmint"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+
+[dependencies]
+anchor-lang = { version = "0.29.0", features = ["init-if-needed"] }
+anchor-spl = "0.29.0"
+solana-program = "1.17"
+
+[dev-dependencies]
+anchor-client = "0.29.0"

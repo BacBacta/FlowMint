@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output (we copy from builder stage)
+dist/
+
+# Source files (not needed in production)
+src/
+tests/
+
+# Development files
+*.md
+.eslintrc*
+.prettier*
+jest.config.*
+tsconfig.json
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+
+# Test files
+*.test.ts
+*.spec.ts
+__tests__/
+coverage/
+
+# Environment files (use Docker secrets or env vars)
+.env*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# Database files (mounted as volume)
+*.db
+*.sqlite

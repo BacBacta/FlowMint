@@ -1,0 +1,73 @@
+{
+  "name": "flowmint",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Reliable, safe, and multi-use execution layer over Jupiter on Solana",
+  "author": "FlowMint Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/BacBacta/FlowMint.git"
+  },
+  "keywords": [
+    "solana",
+    "jupiter",
+    "defi",
+    "swap",
+    "dca",
+    "payments",
+    "anchor"
+  ],
+  "workspaces": [
+    "server",
+    "app",
+    "sdk"
+  ],
+  "scripts": {
+    "dev": "pnpm --parallel --filter ./server --filter ./app dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "test:coverage": "pnpm -r test:coverage",
+    "lint": "pnpm -r lint",
+    "lint:fix": "pnpm -r lint:fix",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\" --ignore-path .gitignore",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\" --ignore-path .gitignore",
+    "typecheck": "pnpm -r typecheck",
+    "clean": "pnpm -r clean && rm -rf node_modules",
+    "prepare": "husky install",
+    "anchor:build": "cd program && anchor build",
+    "anchor:test": "cd program && anchor test",
+    "anchor:deploy:devnet": "cd program && anchor deploy --provider.cluster devnet",
+    "anchor:deploy:mainnet": "cd program && anchor deploy --provider.cluster mainnet"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-import-resolver-typescript": "^3.6.1",
+    "eslint-plugin-import": "^2.29.1",
+    "eslint-plugin-prettier": "^5.1.3",
+    "eslint-plugin-react": "^7.34.1",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "husky": "^9.0.11",
+    "lint-staged": "^15.2.2",
+    "prettier": "^3.2.5",
+    "prettier-plugin-tailwindcss": "^0.5.12",
+    "typescript": "^5.4.2"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md}": [
+      "prettier --write"
+    ]
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "packageManager": "pnpm@8.15.4"
+}

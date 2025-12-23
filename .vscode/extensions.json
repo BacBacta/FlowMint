@@ -1,0 +1,42 @@
+{
+  "recommendations": [
+    // Essential
+    "esbenp.prettier-vscode",
+    "dbaeumer.vscode-eslint",
+    
+    // Rust/Anchor
+    "rust-lang.rust-analyzer",
+    "tamasfe.even-better-toml",
+    
+    // Solana
+    "AnchorLang.anchor",
+    
+    // TypeScript/JavaScript
+    "ms-vscode.vscode-typescript-next",
+    
+    // React/Next.js
+    "dsznajder.es7-react-js-snippets",
+    "bradlc.vscode-tailwindcss",
+    
+    // Git
+    "eamodio.gitlens",
+    "mhutchie.git-graph",
+    
+    // Testing
+    "Orta.vscode-jest",
+    "ms-playwright.playwright",
+    
+    // Documentation
+    "yzhang.markdown-all-in-one",
+    "bierner.markdown-mermaid",
+    
+    // Utilities
+    "christian-kohler.path-intellisense",
+    "streetsidesoftware.code-spell-checker",
+    "usernamehw.errorlens",
+    "gruntfuggly.todo-tree",
+    
+    // API Development
+    "humao.rest-client"
+  ]
+}

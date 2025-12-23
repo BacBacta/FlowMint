@@ -1,0 +1,111 @@
+/**
+ * Health Check Routes
+ */
+
+import { Router, Request, Response } from 'express';
+import { Connection } from '@solana/web3.js';
+
+import { config } from '../../config/index.js';
+
+/**
+ * Create health check routes
+ */
+export function createHealthRoutes(): Router {
+  const router = Router();
+
+  /**
+   * Basic health check
+   */
+  router.get('/', (_req: Request, res: Response) => {
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      version: '0.1.0',
+    });
+  });
+
+  /**
+   * Detailed health check
+   */
+  router.get('/detailed', async (_req: Request, res: Response) => {
+    const checks: Record<string, { status: string; latency?: number; error?: string }> = {};
+
+    // Check Solana RPC
+    try {
+      const start = Date.now();
+      const connection = new Connection(config.solana.rpcUrl);
+      await connection.getSlot();
+      checks.solana = {
+        status: 'ok',
+        latency: Date.now() - start,
+      };
+    } catch (error) {
+      checks.solana = {
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+
+    // Check Jupiter API
+    try {
+      const start = Date.now();
+      const response = await fetch(`${config.jupiter.apiUrl}/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v&amount=1000000&slippageBps=50`);
+      if (response.ok) {
+        checks.jupiter = {
+          status: 'ok',
+          latency: Date.now() - start,
+        };
+      } else {
+        checks.jupiter = {
+          status: 'degraded',
+          error: `HTTP ${response.status}`,
+        };
+      }
+    } catch (error) {
+      checks.jupiter = {
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+
+    // Check Pyth
+    try {
+      const start = Date.now();
+      const response = await fetch(`${config.pyth.endpoint}/api/latest_price_feeds?ids[]=0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43`);
+      if (response.ok) {
+        checks.pyth = {
+          status: 'ok',
+          latency: Date.now() - start,
+        };
+      } else {
+        checks.pyth = {
+          status: 'degraded',
+          error: `HTTP ${response.status}`,
+        };
+      }
+    } catch (error) {
+      checks.pyth = {
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+
+    const overallStatus = Object.values(checks).every((c) => c.status === 'ok')
+      ? 'ok'
+      : Object.values(checks).some((c) => c.status === 'error')
+        ? 'error'
+        : 'degraded';
+
+    res.status(overallStatus === 'ok' ? 200 : overallStatus === 'degraded' ? 200 : 503).json({
+      status: overallStatus,
+      timestamp: new Date().toISOString(),
+      checks,
+      config: {
+        network: config.solana.network,
+        environment: config.nodeEnv,
+      },
+    });
+  });
+
+  return router;
+}

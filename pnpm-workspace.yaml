@@ -1,0 +1,13 @@
+packages:
+  - 'server'
+  - 'app'
+  - 'sdk'
+
+# Hoist all dependencies to root node_modules
+shamefully-hoist: true
+
+# Automatically install peer dependencies
+auto-install-peers: true
+
+# Strict peer dependencies
+strict-peer-dependencies: false
