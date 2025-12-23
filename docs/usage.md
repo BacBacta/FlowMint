@@ -289,6 +289,82 @@ The SDK automatically retries failed requests:
 
 ---
 
+## On-Chain Program Usage
+
+### Using FlowMint Program (Advanced)
+
+For enhanced on-chain validation and tracking, you can enable FlowMint program integration:
+
+```typescript
+const result = await client.executeSwap({
+  userPublicKey: wallet.publicKey.toBase58(),
+  inputMint: 'So11111111111111111111111111111111111111112',
+  outputMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+  amount: 1_000_000_000,
+  slippageBps: 50,
+  // Enable FlowMint on-chain program
+  useFlowMintProgram: true,
+  userInputAccount: inputTokenAccount.toBase58(),
+  userOutputAccount: outputTokenAccount.toBase58(),
+});
+
+// Transaction includes FlowMint instruction
+// Result includes on-chain receipt PDA
+console.log(`Receipt PDA: ${result.receiptPda}`);
+```
+
+### Benefits of On-Chain Execution
+
+1. **Verified Slippage**: Slippage limits enforced on-chain
+2. **On-Chain Receipts**: All swaps recorded as PDAs
+3. **User Statistics**: Track swap history on-chain
+4. **Protected Mode**: Stricter limits when enabled
+
+### Transaction Signing
+
+FlowMint transactions require wallet signature:
+
+```typescript
+// 1. Get transaction from API
+const { transaction, lastValidBlockHeight } = await client.executeSwap({...});
+
+// 2. Deserialize transaction
+const tx = VersionedTransaction.deserialize(Buffer.from(transaction, 'base64'));
+
+// 3. Sign with wallet
+tx.sign([wallet]);
+
+// 4. Send to network
+const signature = await connection.sendTransaction(tx);
+
+// 5. Confirm transaction
+await connection.confirmTransaction({
+  signature,
+  blockhash: tx.message.recentBlockhash,
+  lastValidBlockHeight,
+});
+```
+
+### Payment with FlowMint Program
+
+```typescript
+const payment = await client.executePayment({
+  payerPublicKey: wallet.publicKey.toBase58(),
+  merchantPublicKey: merchantAddress,
+  amountUsdc: '100000000', // 100 USDC
+  tokenFrom: 'So11111111111111111111111111111111111111112',
+  // Enable on-chain tracking
+  useFlowMintProgram: true,
+  payerInputAccount: solTokenAccount.toBase58(),
+  payerUsdcAccount: usdcTokenAccount.toBase58(),
+  merchantUsdcAccount: merchantUsdcAccount,
+});
+
+console.log(`Payment Record PDA: ${payment.paymentRecordPda}`);
+```
+
+---
+
 ## FAQ
 
 ### Is FlowMint safe?

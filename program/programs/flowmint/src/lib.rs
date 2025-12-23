@@ -18,6 +18,7 @@ use anchor_spl::token::{Token, TokenAccount, Transfer};
 
 pub mod errors;
 pub mod instructions;
+pub mod jupiter;
 pub mod state;
 
 use errors::FlowMintError;

@@ -11,6 +11,7 @@ import { config } from '../config/index.js';
 import { KNOWN_TOKENS } from '../config/risk-policies.js';
 import { logger } from '../utils/logger.js';
 import { jupiterService } from './jupiterService.js';
+import { flowMintOnChainService } from './flowMintOnChain.js';
 import { DatabaseService } from '../db/database.js';
 
 /**
@@ -27,6 +28,14 @@ export interface PaymentRequest {
   tokenFrom: string;
   /** Optional payment memo/reference */
   memo?: string;
+  /** Use FlowMint on-chain program */
+  useFlowMintProgram?: boolean;
+  /** Payer's input token account */
+  payerInputAccount?: string;
+  /** Payer's USDC token account */
+  payerUsdcAccount?: string;
+  /** Merchant's USDC token account */
+  merchantUsdcAccount?: string;
 }
 
 /**
@@ -78,6 +87,10 @@ export interface PaymentResult {
   error?: string;
   /** Timestamp */
   timestamp: number;
+  /** Payment record PDA (if using FlowMint program) */
+  paymentRecordPda?: string;
+  /** Route data (if using FlowMint program) */
+  routeData?: string;
 }
 
 /**
@@ -255,6 +268,56 @@ export class PaymentService {
         wrapAndUnwrapSol: true,
       });
 
+      let finalTransaction = swap.swapTransaction;
+      let paymentRecordPda: string | undefined;
+      let routeData: string | undefined;
+
+      // Step: Inject FlowMint instruction if using on-chain program
+      if (request.useFlowMintProgram && request.payerInputAccount && request.payerUsdcAccount && request.merchantUsdcAccount) {
+        const payerPubkey = new PublicKey(request.payerPublicKey);
+        const merchantPubkey = new PublicKey(request.merchantPublicKey);
+        const routeBuffer = flowMintOnChainService.serializeRoute(jupiterQuote);
+        routeData = routeBuffer.toString('base64');
+
+        // Get payment record PDA for reference
+        const txTimestamp = Math.floor(timestamp / 1000);
+        const [recordPDA] = flowMintOnChainService.getPaymentRecordPDA(payerPubkey, merchantPubkey, txTimestamp);
+        paymentRecordPda = recordPDA.toString();
+
+        // Build FlowMint pay_any_token instruction
+        const flowMintInstruction = flowMintOnChainService.buildPayAnyTokenInstruction({
+          payer: payerPubkey,
+          merchant: merchantPubkey,
+          payerInputAccount: new PublicKey(request.payerInputAccount),
+          payerUsdcAccount: new PublicKey(request.payerUsdcAccount),
+          merchantUsdcAccount: new PublicKey(request.merchantUsdcAccount),
+          inputMint: new PublicKey(request.tokenFrom),
+          usdcMint: new PublicKey(this.usdcMint),
+          jupiterProgram: new PublicKey('JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4'),
+          maxInputAmount: BigInt(jupiterQuote.inAmount),
+          exactUsdcOutput: BigInt(request.amountUsdc),
+          memo: request.memo || '',
+          routeData: routeBuffer,
+          jupiterAccounts: [], // Will be populated from Jupiter transaction
+        });
+
+        // Deserialize Jupiter transaction and inject FlowMint instruction
+        const jupiterTx = jupiterService.deserializeTransaction(swap.swapTransaction);
+        const wrappedTx = await flowMintOnChainService.injectFlowMintInstruction(
+          jupiterTx,
+          flowMintInstruction,
+          payerPubkey
+        );
+
+        // Serialize the wrapped transaction
+        finalTransaction = Buffer.from(wrappedTx.serialize()).toString('base64');
+
+        this.log.info(
+          { paymentRecordPda, routeDataLen: routeBuffer.length },
+          'FlowMint payment instruction injected'
+        );
+      }
+
       // Save payment record
       const record: PaymentRecord = {
         paymentId,
@@ -278,9 +341,11 @@ export class PaymentService {
         inputAmount: jupiterQuote.inAmount,
         inputToken: request.tokenFrom,
         merchantPublicKey: request.merchantPublicKey,
-        transaction: swap.swapTransaction,
+        transaction: finalTransaction,
         lastValidBlockHeight: swap.lastValidBlockHeight,
         timestamp,
+        paymentRecordPda,
+        routeData,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';

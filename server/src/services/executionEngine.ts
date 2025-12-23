@@ -5,7 +5,7 @@
  * Acts as the orchestrator between Jupiter service and on-chain program.
  */
 
-import { Connection, PublicKey, Keypair, VersionedTransaction } from '@solana/web3.js';
+import { Connection, PublicKey, Keypair, VersionedTransaction, AccountMeta } from '@solana/web3.js';
 import { v4 as uuidv4 } from 'uuid';
 
 import { config } from '../config/index.js';
@@ -19,6 +19,7 @@ import {
 } from '../config/risk-policies.js';
 import { logger } from '../utils/logger.js';
 import { jupiterService, QuoteResponse, JupiterError } from './jupiterService.js';
+import { flowMintOnChainService, FLOWMINT_PROGRAM_ID } from './flowMintOnChain.js';
 import { DatabaseService } from '../db/database.js';
 
 /**
@@ -41,6 +42,12 @@ export interface SwapExecutionRequest {
   exactOut?: boolean;
   /** Optional: skip policy validation (for advanced users) */
   skipPolicyValidation?: boolean;
+  /** Optional: use FlowMint on-chain program for validation */
+  useFlowMintProgram?: boolean;
+  /** Optional: user's input token account */
+  userInputAccount?: string;
+  /** Optional: user's output token account */
+  userOutputAccount?: string;
 }
 
 /**
@@ -72,6 +79,10 @@ export interface SwapExecutionResult {
   warnings: string[];
   /** Timestamp */
   timestamp: number;
+  /** FlowMint receipt PDA (if using on-chain program) */
+  receiptPda?: string;
+  /** Route data for on-chain validation */
+  routeData?: string;
 }
 
 /**
@@ -195,6 +206,54 @@ export class ExecutionEngine {
         prioritizationFeeLamports: 'auto',
       });
 
+      let finalTransaction = swap.swapTransaction;
+      let receiptPda: string | undefined;
+      let routeData: string | undefined;
+
+      // Step 4b: Inject FlowMint instruction if using on-chain program
+      if (request.useFlowMintProgram && request.userInputAccount && request.userOutputAccount) {
+        const userPubkey = new PublicKey(request.userPublicKey);
+        const routeBuffer = flowMintOnChainService.serializeRoute(quote);
+        routeData = routeBuffer.toString('base64');
+
+        // Get receipt PDA for reference
+        const txTimestamp = Math.floor(timestamp / 1000);
+        const [receiptPDA] = flowMintOnChainService.getReceiptPDA(userPubkey, txTimestamp);
+        receiptPda = receiptPDA.toString();
+
+        // Build FlowMint execute_swap instruction
+        const flowMintInstruction = flowMintOnChainService.buildExecuteSwapInstruction({
+          user: userPubkey,
+          userInputAccount: new PublicKey(request.userInputAccount),
+          userOutputAccount: new PublicKey(request.userOutputAccount),
+          inputMint: new PublicKey(request.inputMint),
+          outputMint: new PublicKey(request.outputMint),
+          jupiterProgram: new PublicKey('JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4'),
+          amountIn: BigInt(request.amount),
+          minimumAmountOut: BigInt(quote.outAmount),
+          slippageBps: request.slippageBps,
+          protectedMode: request.protectedMode || false,
+          routeData: routeBuffer,
+          jupiterAccounts: [], // Will be populated from Jupiter transaction
+        });
+
+        // Deserialize Jupiter transaction and inject FlowMint instruction
+        const jupiterTx = jupiterService.deserializeTransaction(swap.swapTransaction);
+        const wrappedTx = await flowMintOnChainService.injectFlowMintInstruction(
+          jupiterTx,
+          flowMintInstruction,
+          userPubkey
+        );
+
+        // Serialize the wrapped transaction
+        finalTransaction = Buffer.from(wrappedTx.serialize()).toString('base64');
+
+        this.log.info(
+          { receiptPda, routeDataLen: routeBuffer.length },
+          'FlowMint instruction injected'
+        );
+      }
+
       // Step 5: Save receipt (pending)
       await this.saveReceipt({
         receiptId,
@@ -240,11 +299,13 @@ export class ExecutionEngine {
           priceImpactPct: quote.priceImpactPct,
           routeSteps: quote.routePlan.length,
         },
-        transaction: swap.swapTransaction,
+        transaction: finalTransaction,
         lastValidBlockHeight: swap.lastValidBlockHeight,
         riskLevel,
         warnings: allWarnings,
         timestamp,
+        receiptPda,
+        routeData,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';

@@ -293,3 +293,105 @@ CREATE TABLE payments (
 3. **Multi-leg Swaps** - Complex routing
 4. **Webhook Notifications** - Real-time updates
 5. **Mobile SDK** - React Native support
+## On-Chain Jupiter CPI Integration
+
+FlowMint's Anchor program executes swaps via Cross-Program Invocation (CPI) to Jupiter.
+
+### Jupiter CPI Flow
+
+```
+User signs TX → FlowMint Program → Jupiter CPI → DEX Aggregation
+                      ↓
+              Validate Route Data
+                      ↓
+              Execute Jupiter Swap
+                      ↓
+              Verify Output Amount
+                      ↓
+              Create SwapReceipt PDA
+                      ↓
+              Update UserStats
+```
+
+### Route Serialization
+
+Jupiter quotes are serialized to Borsh format for on-chain deserialization:
+
+```rust
+pub struct JupiterRoute {
+    pub input_mint: Pubkey,
+    pub output_mint: Pubkey,
+    pub amount_in: u64,
+    pub minimum_amount_out: u64,
+    pub steps: Vec<RouteStep>,
+    pub expires_at: i64,
+}
+
+pub struct RouteStep {
+    pub dex_program_id: Pubkey,
+    pub in_amount: u64,
+    pub out_amount: u64,
+    pub pool_info: [u8; 32],
+}
+```
+
+### Instruction Injection
+
+The off-chain engine injects FlowMint instructions into Jupiter transactions:
+
+```typescript
+// 1. Get Jupiter transaction
+const jupiterTx = await jupiterService.getSwapTransaction(quote);
+
+// 2. Build FlowMint instruction
+const flowMintIx = buildExecuteSwapInstruction({
+  user,
+  inputMint,
+  outputMint,
+  amountIn,
+  minimumAmountOut,
+  routeData,
+});
+
+// 3. Inject into transaction
+const wrappedTx = injectFlowMintInstruction(jupiterTx, flowMintIx);
+
+// 4. Return for user signing
+return wrappedTx.serialize();
+```
+
+### PDA Derivation
+
+FlowMint uses Program Derived Addresses for deterministic account storage:
+
+| PDA | Seeds | Purpose |
+|-----|-------|---------|
+| Config | `["config"]` | Protocol settings |
+| Receipt | `["receipt", user, timestamp]` | Swap records |
+| UserStats | `["user_stats", user]` | User metrics |
+| PaymentRecord | `["payment", payer, merchant, timestamp]` | Payment tracking |
+
+### Protected Mode Enforcement
+
+On-chain validation ensures slippage limits are respected:
+
+```rust
+// Validate slippage against protocol config
+let max_slippage = if protected_mode {
+    config.protected_slippage_bps
+} else {
+    config.default_slippage_bps
+};
+
+require!(
+    slippage_bps <= max_slippage,
+    FlowMintError::SlippageExceeded
+);
+
+// Post-swap verification
+let actual_out = ctx.accounts.user_output_account.amount;
+require!(
+    actual_out >= minimum_amount_out,
+    FlowMintError::InsufficientOutput
+);
+```
