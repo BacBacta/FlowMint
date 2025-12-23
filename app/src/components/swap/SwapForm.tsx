@@ -208,8 +208,7 @@ export function SwapForm() {
       <div className="mb-4">
         <ProtectedToggle
           enabled={protectedMode}
-          onToggle={setProtectedMode}
-          size="sm"
+          onChange={setProtectedMode}
         />
       </div>
 
