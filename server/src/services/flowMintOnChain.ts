@@ -26,10 +26,10 @@ const log = logger.child({ service: 'FlowMintOnChain' });
 
 /**
  * FlowMint Program ID
- * TODO: Replace with actual deployed program ID
+ * Deployed on devnet: D6ABGCinQcXfg5N4toSEWDo3iDPwYMZ22HvURR1Fb1hf
  */
 export const FLOWMINT_PROGRAM_ID = new PublicKey(
-  '11111111111111111111111111111111' // Placeholder - replace after deployment
+  'D6ABGCinQcXfg5N4toSEWDo3iDPwYMZ22HvURR1Fb1hf'
 );
 
 /**

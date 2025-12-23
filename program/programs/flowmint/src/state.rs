@@ -9,7 +9,6 @@ use anchor_lang::prelude::*;
 /// Stores global settings for the FlowMint protocol including
 /// slippage limits and protection parameters.
 #[account]
-#[derive(Default)]
 pub struct ProtocolConfig {
     /// The authority that can update the configuration
     pub authority: Pubkey,
@@ -43,6 +42,24 @@ pub struct ProtocolConfig {
 
     /// Reserved space for future upgrades
     pub _reserved: [u8; 64],
+}
+
+impl Default for ProtocolConfig {
+    fn default() -> Self {
+        Self {
+            authority: Pubkey::default(),
+            default_slippage_bps: 0,
+            protected_slippage_bps: 0,
+            max_price_impact_bps: 0,
+            protected_mode_enabled: false,
+            protocol_fee_bps: 0,
+            treasury: Pubkey::default(),
+            total_swaps: 0,
+            total_volume_usd: 0,
+            bump: 0,
+            _reserved: [0u8; 64],
+        }
+    }
 }
 
 impl ProtocolConfig {

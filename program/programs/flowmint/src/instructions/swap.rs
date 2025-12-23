@@ -117,8 +117,8 @@ pub struct ExecuteSwap<'info> {
 /// # Returns
 ///
 /// * `Result<()>` - Success or error
-pub fn execute_swap_handler(
-    ctx: Context<ExecuteSwap>,
+pub fn execute_swap_handler<'info>(
+    ctx: Context<'_, '_, 'info, 'info, ExecuteSwap<'info>>,
     amount_in: u64,
     minimum_amount_out: u64,
     slippage_bps: u16,
@@ -195,7 +195,7 @@ pub fn execute_swap_handler(
     // ============================================================
     // Step 5: Execute Jupiter CPI swap
     // ============================================================
-    let jupiter_accounts: Vec<AccountInfo> = remaining_accounts[1..].to_vec();
+    let jupiter_accounts: Vec<AccountInfo<'info>> = remaining_accounts[1..].to_vec();
 
     let _actual_output = execute_jupiter_swap(
         &ctx.accounts.jupiter_program,

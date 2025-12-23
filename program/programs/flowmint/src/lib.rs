@@ -24,7 +24,7 @@ pub mod state;
 use errors::FlowMintError;
 use instructions::*;
 
-declare_id!("11111111111111111111111111111111");
+declare_id!("D6ABGCinQcXfg5N4toSEWDo3iDPwYMZ22HvURR1Fb1hf");
 
 /// The main FlowMint program module
 #[program]
@@ -75,8 +75,8 @@ pub mod flowmint {
     /// - `SlippageExceeded` if the slippage tolerance exceeds the allowed maximum
     /// - `PriceImpactTooHigh` if the estimated price impact is too high
     /// - `InsufficientBalance` if the user doesn't have enough tokens
-    pub fn execute_swap(
-        ctx: Context<ExecuteSwap>,
+    pub fn execute_swap<'info>(
+        ctx: Context<'_, '_, 'info, 'info, ExecuteSwap<'info>>,
         amount_in: u64,
         minimum_amount_out: u64,
         slippage_bps: u16,
@@ -107,8 +107,8 @@ pub mod flowmint {
     ///
     /// - `PaymentFailed` if the swap or transfer fails
     /// - `InsufficientBalance` if the payer doesn't have enough tokens
-    pub fn pay_any_token(
-        ctx: Context<PayAnyToken>,
+    pub fn pay_any_token<'info>(
+        ctx: Context<'_, '_, 'info, 'info, PayAnyToken<'info>>,
         amount_in: u64,
         exact_usdc_out: u64,
         memo: Option<String>,

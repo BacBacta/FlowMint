@@ -3,10 +3,10 @@ seeds = false
 skip-lint = false
 
 [programs.localnet]
-flowmint = "11111111111111111111111111111111"
+flowmint = "D6ABGCinQcXfg5N4toSEWDo3iDPwYMZ22HvURR1Fb1hf"
 
 [programs.devnet]
-flowmint = "11111111111111111111111111111111"
+flowmint = "D6ABGCinQcXfg5N4toSEWDo3iDPwYMZ22HvURR1Fb1hf"
 
 [registry]
 url = "https://api.apr.dev"

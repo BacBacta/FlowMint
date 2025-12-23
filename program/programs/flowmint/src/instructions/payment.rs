@@ -144,8 +144,8 @@ pub struct PayAnyToken<'info> {
 /// # Returns
 ///
 /// * `Result<()>` - Success or error
-pub fn pay_any_token_handler(
-    ctx: Context<PayAnyToken>,
+pub fn pay_any_token_handler<'info>(
+    ctx: Context<'_, '_, 'info, 'info, PayAnyToken<'info>>,
     amount_in: u64,
     exact_usdc_out: u64,
     memo: Option<String>,
@@ -220,7 +220,7 @@ pub fn pay_any_token_handler(
         // ============================================================
         let temp_usdc_balance_before = ctx.accounts.temp_usdc_account.amount;
 
-        let jupiter_accounts: Vec<AccountInfo> = remaining_accounts[1..].to_vec();
+        let jupiter_accounts: Vec<AccountInfo<'info>> = remaining_accounts[1..].to_vec();
         execute_jupiter_swap(
             &ctx.accounts.jupiter_program,
             &jupiter_accounts,
