@@ -370,6 +370,7 @@ export function SwapForm() {
           <RiskBreakdown
             reasons={riskReasons}
             level={riskLevel}
+            blockedInProtectedMode={isBlocked}
             requiresAcknowledgement={requiresAcknowledgement}
             onAcknowledge={() => setRiskAcknowledged(true)}
             acknowledged={riskAcknowledged}

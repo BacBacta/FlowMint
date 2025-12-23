@@ -37,6 +37,7 @@ export interface SwapRequest {
   outputMint: string;
   amount: number;
   slippageBps?: number;
+  protectedMode?: boolean;
 }
 
 export interface SwapResponse {

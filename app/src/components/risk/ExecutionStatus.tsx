@@ -8,38 +8,143 @@
 
 import { CheckCircle, Circle, Loader2, XCircle } from 'lucide-react';
 
-export type ExecutionStep = 'quoting' | 'building' | 'sending' | 'confirming' | 'confirmed' | 'failed';
+// Legacy type for backwards compatibility
+export type ExecutionStepType = 'quoting' | 'building' | 'sending' | 'confirming' | 'confirmed' | 'failed';
 
-interface ExecutionStatusProps {
-  currentStep: ExecutionStep;
+// New interface for flexible step definitions
+export interface ExecutionStep {
+  id: string;
+  label: string;
+  status: 'pending' | 'current' | 'completed' | 'failed';
+}
+
+interface ExecutionStatusPropsLegacy {
+  currentStep: ExecutionStepType;
+  steps?: never;
+  variant?: never;
   error?: string;
   signature?: string;
   attempts?: number;
   className?: string;
 }
 
-const STEPS: { key: ExecutionStep; label: string }[] = [
+interface ExecutionStatusPropsNew {
+  steps: ExecutionStep[];
+  currentStep?: never;
+  variant?: 'default' | 'minimal';
+  error?: string;
+  signature?: string;
+  className?: string;
+}
+
+type ExecutionStatusProps = ExecutionStatusPropsLegacy | ExecutionStatusPropsNew;
+
+const LEGACY_STEPS: { key: ExecutionStepType; label: string }[] = [
   { key: 'quoting', label: 'Getting quote' },
   { key: 'building', label: 'Building transaction' },
   { key: 'sending', label: 'Sending to network' },
   { key: 'confirming', label: 'Confirming' },
 ];
 
-export function ExecutionStatus({
-  currentStep,
-  error,
-  signature,
-  attempts,
-  className = '',
-}: ExecutionStatusProps) {
-  const currentIndex = STEPS.findIndex((s) => s.key === currentStep);
+export function ExecutionStatus(props: ExecutionStatusProps) {
+  const {
+    error,
+    signature,
+    className = '',
+  } = props;
+
+  // Handle new steps array format
+  if ('steps' in props && props.steps) {
+    const { steps, variant = 'default' } = props;
+    const isComplete = steps.every(s => s.status === 'completed');
+    const hasFailed = steps.some(s => s.status === 'failed');
+    const currentStep = steps.find(s => s.status === 'current');
+
+    if (variant === 'minimal') {
+      return (
+        <div className={`flex items-center gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 ${className}`}>
+          {isComplete ? (
+            <>
+              <CheckCircle size={20} className="text-green-500" />
+              <span className="text-sm text-green-600 dark:text-green-400">Transaction confirmed!</span>
+            </>
+          ) : hasFailed ? (
+            <>
+              <XCircle size={20} className="text-red-500" />
+              <span className="text-sm text-red-600 dark:text-red-400">{error || 'Transaction failed'}</span>
+            </>
+          ) : (
+            <>
+              <Loader2 size={20} className="text-blue-500 animate-spin" />
+              <span className="text-sm text-blue-600 dark:text-blue-400">
+                {currentStep?.label || 'Processing...'}
+              </span>
+            </>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div className={`p-4 rounded-lg bg-gray-50 dark:bg-gray-800/50 ${className}`}>
+        <div className="space-y-3">
+          {steps.map((step) => (
+            <div
+              key={step.id}
+              className={`flex items-center gap-3 ${
+                step.status === 'pending' ? 'opacity-40' : ''
+              }`}
+            >
+              {step.status === 'completed' ? (
+                <CheckCircle size={20} className="text-green-500" />
+              ) : step.status === 'current' ? (
+                <Loader2 size={20} className="text-blue-500 animate-spin" />
+              ) : step.status === 'failed' ? (
+                <XCircle size={20} className="text-red-500" />
+              ) : (
+                <Circle size={20} className="text-gray-300 dark:text-gray-600" />
+              )}
+              <span
+                className={`text-sm ${
+                  step.status === 'completed'
+                    ? 'text-green-600 dark:text-green-400'
+                    : step.status === 'current'
+                    ? 'text-blue-600 dark:text-blue-400 font-medium'
+                    : step.status === 'failed'
+                    ? 'text-red-600 dark:text-red-400'
+                    : 'text-gray-500 dark:text-gray-500'
+                }`}
+              >
+                {step.label}
+              </span>
+            </div>
+          ))}
+          
+          {signature && isComplete && (
+            <a
+              href={`https://solscan.io/tx/${signature}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 text-sm text-green-600 dark:text-green-400 hover:underline block"
+            >
+              View on Solscan →
+            </a>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Legacy format with currentStep
+  const { currentStep, attempts } = props as ExecutionStatusPropsLegacy;
+  const currentIndex = LEGACY_STEPS.findIndex((s) => s.key === currentStep);
   const isComplete = currentStep === 'confirmed';
   const isFailed = currentStep === 'failed';
 
   return (
     <div className={`p-4 rounded-lg bg-gray-50 dark:bg-gray-800/50 ${className}`}>
       <div className="space-y-3">
-        {STEPS.map((step, index) => {
+        {LEGACY_STEPS.map((step, index) => {
           const isPast = index < currentIndex || isComplete;
           const isCurrent = index === currentIndex && !isComplete && !isFailed;
           const isFutureOrFailed = index > currentIndex || isFailed;

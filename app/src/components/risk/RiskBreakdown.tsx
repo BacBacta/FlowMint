@@ -22,9 +22,10 @@ export interface RiskReason {
 interface RiskBreakdownProps {
   level: RiskLevel;
   reasons: RiskReason[];
-  blockedInProtectedMode: boolean;
-  requiresAcknowledgement: boolean;
+  blockedInProtectedMode?: boolean;
+  requiresAcknowledgement?: boolean;
   onAcknowledge?: () => void;
+  acknowledged?: boolean;
   className?: string;
 }
 
@@ -43,16 +44,20 @@ const SEVERITY_COLORS: Record<RiskLevel, string> = {
 export function RiskBreakdown({
   level,
   reasons,
-  blockedInProtectedMode,
-  requiresAcknowledgement,
+  blockedInProtectedMode = false,
+  requiresAcknowledgement = false,
   onAcknowledge,
+  acknowledged: externalAcknowledged,
   className = '',
 }: RiskBreakdownProps) {
   const [isExpanded, setIsExpanded] = useState(level !== 'GREEN');
-  const [acknowledged, setAcknowledged] = useState(false);
+  const [internalAcknowledged, setInternalAcknowledged] = useState(false);
+  
+  // Use external acknowledged state if provided, otherwise use internal
+  const acknowledged = externalAcknowledged !== undefined ? externalAcknowledged : internalAcknowledged;
 
   const handleAcknowledge = () => {
-    setAcknowledged(true);
+    setInternalAcknowledged(true);
     onAcknowledge?.();
   };
 
