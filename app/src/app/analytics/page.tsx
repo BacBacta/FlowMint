@@ -4,18 +4,20 @@
  * Displays platform-wide and user-specific analytics dashboard.
  */
 
-import { Metadata } from 'next';
-import { AnalyticsDashboard } from '@/components/analytics';
+'use client';
 
-export const metadata: Metadata = {
-  title: 'Analytics | FlowMint',
-  description: 'Statistiques et métriques de la plateforme FlowMint',
-};
+import { Header } from '@/components/Header';
+import { Footer } from '@/components/Footer';
+import { AnalyticsDashboard } from '@/components/analytics';
 
 export default function AnalyticsPage() {
   return (
-    <main className="from-surface-950 via-surface-900 to-surface-950 min-h-screen bg-gradient-to-br">
-      <AnalyticsDashboard />
-    </main>
+    <div className="flex min-h-screen flex-col">
+      <Header />
+      <main className="flex-1 py-8">
+        <AnalyticsDashboard />
+      </main>
+      <Footer />
+    </div>
   );
 }
