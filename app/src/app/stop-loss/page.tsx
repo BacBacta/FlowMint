@@ -93,8 +93,10 @@ export default function StopLossPage() {
         <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
           {/* Page Header */}
           <div className="mb-8 text-center">
-            <h1 className="text-3xl font-bold text-surface-900 dark:text-white">Stop-Loss Orders</h1>
-            <p className="mt-2 text-surface-600 dark:text-surface-400">
+            <h1 className="text-surface-900 text-3xl font-bold dark:text-white">
+              Stop-Loss Orders
+            </h1>
+            <p className="text-surface-600 dark:text-surface-400 mt-2">
               Protect your positions with automated stop-loss triggers
             </p>
           </div>
@@ -102,12 +104,12 @@ export default function StopLossPage() {
           <div className="grid gap-8 lg:grid-cols-2">
             {/* Create Stop-Loss Form */}
             <div className="card">
-              <h2 className="mb-6 text-xl font-semibold text-surface-900 dark:text-white">
+              <h2 className="text-surface-900 mb-6 text-xl font-semibold dark:text-white">
                 Create Stop-Loss
               </h2>
 
               {!connected ? (
-                <div className="py-8 text-center text-surface-600 dark:text-surface-400">
+                <div className="text-surface-600 dark:text-surface-400 py-8 text-center">
                   Connect your wallet to create stop-loss orders
                 </div>
               ) : (
@@ -117,13 +119,13 @@ export default function StopLossPage() {
                     <label className="label mb-2">Token to sell</label>
                     <select
                       value={selectedToken.mint}
-                      onChange={(e) => {
-                        const token = TOKENS_WITH_FEEDS.find((t) => t.mint === e.target.value);
+                      onChange={e => {
+                        const token = TOKENS_WITH_FEEDS.find(t => t.mint === e.target.value);
                         if (token) setSelectedToken(token);
                       }}
                       className="input w-full"
                     >
-                      {TOKENS_WITH_FEEDS.map((token) => (
+                      {TOKENS_WITH_FEEDS.map(token => (
                         <option key={token.mint} value={token.mint}>
                           {token.symbol}
                         </option>
@@ -137,7 +139,7 @@ export default function StopLossPage() {
                     <input
                       type="number"
                       value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
+                      onChange={e => setAmount(e.target.value)}
                       placeholder="0.0"
                       className="input w-full"
                       min={0}
@@ -150,14 +152,15 @@ export default function StopLossPage() {
                     <input
                       type="number"
                       value={triggerPrice}
-                      onChange={(e) => setTriggerPrice(e.target.value)}
+                      onChange={e => setTriggerPrice(e.target.value)}
                       placeholder="0.0"
                       className="input w-full"
                       min={0}
                       step="0.01"
                     />
-                    <p className="mt-1 text-xs text-surface-500">
-                      Order will execute when {selectedToken.symbol} price falls to or below this level
+                    <p className="text-surface-500 mt-1 text-xs">
+                      Order will execute when {selectedToken.symbol} price falls to or below this
+                      level
                     </p>
                   </div>
 
@@ -213,43 +216,58 @@ export default function StopLossPage() {
 
             {/* Active Stop-Loss Orders */}
             <div className="card">
-              <h2 className="mb-6 text-xl font-semibold text-surface-900 dark:text-white">
+              <h2 className="text-surface-900 mb-6 text-xl font-semibold dark:text-white">
                 Active Stop-Loss Orders
               </h2>
 
               {intentsLoading ? (
                 <div className="flex items-center justify-center py-8">
-                  <svg className="h-8 w-8 animate-spin text-primary-500" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  <svg
+                    className="text-primary-500 h-8 w-8 animate-spin"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                    />
                   </svg>
                 </div>
               ) : !intents || intents.length === 0 ? (
-                <div className="py-8 text-center text-surface-600 dark:text-surface-400">
+                <div className="text-surface-600 dark:text-surface-400 py-8 text-center">
                   No active stop-loss orders
                 </div>
               ) : (
                 <div className="space-y-4">
                   {intents.map((intent: any) => {
-                    const token = TOKENS_WITH_FEEDS.find((t) => t.mint === intent.inputMint);
+                    const token = TOKENS_WITH_FEEDS.find(t => t.mint === intent.inputMint);
                     return (
                       <div
                         key={intent.id}
-                        className="rounded-lg border border-surface-200 p-4 dark:border-surface-700"
+                        className="border-surface-200 dark:border-surface-700 rounded-lg border p-4"
                       >
                         <div className="flex items-center justify-between">
                           <div>
                             <div className="flex items-center gap-2">
                               <span className="badge-warning">Stop-Loss</span>
-                              <span className="font-medium text-surface-900 dark:text-white">
+                              <span className="text-surface-900 font-medium dark:text-white">
                                 {token?.symbol || 'Unknown'}
                               </span>
                             </div>
-                            <div className="mt-1 text-sm text-surface-500">
-                              Amount:{' '}
-                              {intent.totalAmount / 10 ** (token?.decimals || 9)} {token?.symbol}
+                            <div className="text-surface-500 mt-1 text-sm">
+                              Amount: {intent.totalAmount / 10 ** (token?.decimals || 9)}{' '}
+                              {token?.symbol}
                             </div>
-                            <div className="text-sm text-surface-500">
+                            <div className="text-surface-500 text-sm">
                               Trigger: ${intent.triggerPrice?.toFixed(2) || 'N/A'}
                             </div>
                           </div>

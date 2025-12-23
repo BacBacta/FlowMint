@@ -3,10 +3,7 @@
 import { useState, useMemo } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
-import {
-  ConnectionProvider,
-  WalletProvider,
-} from '@solana/wallet-adapter-react';
+import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import {
   PhantomWalletAdapter,
@@ -37,13 +34,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
             staleTime: 30 * 1000, // 30 seconds
             refetchOnWindowFocus: false,
             retry: 3,
-            retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+            retryDelay: attemptIndex => Math.min(1000 * 2 ** attemptIndex, 30000),
           },
           mutations: {
             retry: 1,
           },
         },
-      }),
+      })
   );
 
   // Solana connection
@@ -63,7 +60,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       new TorusWalletAdapter(),
       new LedgerWalletAdapter(),
     ],
-    [],
+    []
   );
 
   return (

@@ -8,7 +8,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { ArrowRight, Check, AlertTriangle, X, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { Check, AlertTriangle, X, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
@@ -34,9 +34,9 @@ interface SwapComparisonProps {
 
 export function SwapComparison({
   receiptId,
-  inputAmount,
-  inputMint,
-  outputMint,
+  inputAmount: _inputAmount,
+  inputMint: _inputMint,
+  outputMint: _outputMint,
   compact = false,
 }: SwapComparisonProps) {
   const [comparison, setComparison] = useState<ComparisonData | null>(null);
@@ -48,17 +48,17 @@ export function SwapComparison({
       try {
         setIsLoading(true);
         const response = await fetch(`${API_BASE}/analytics/comparison/${receiptId}`);
-        
+
         if (response.status === 404) {
           // No comparison data available
           setComparison(null);
           return;
         }
-        
+
         if (!response.ok) {
           throw new Error('Failed to fetch comparison');
         }
-        
+
         const data = await response.json();
         setComparison(data);
       } catch (err) {
@@ -91,7 +91,7 @@ export function SwapComparison({
           color: 'text-blue-400',
           bgColor: 'bg-blue-500/10',
           label: 'Bon',
-          description: 'Proche de l\'estimation',
+          description: "Proche de l'estimation",
         };
       case 'acceptable':
         return {
@@ -141,7 +141,7 @@ export function SwapComparison({
   if (isLoading) {
     return (
       <div className={`${compact ? 'inline-flex items-center gap-1' : 'p-3'} text-gray-400`}>
-        <div className="animate-pulse w-4 h-4 rounded-full bg-gray-600" />
+        <div className="h-4 w-4 animate-pulse rounded-full bg-gray-600" />
         {!compact && <span className="text-sm">Chargement...</span>}
       </div>
     );
@@ -150,9 +150,9 @@ export function SwapComparison({
   // No comparison data
   if (!comparison || error) {
     if (compact) return null;
-    
+
     return (
-      <div className="p-3 bg-gray-800/50 rounded-lg text-sm text-gray-500">
+      <div className="rounded-lg bg-gray-800/50 p-3 text-sm text-gray-500">
         Pas de données de comparaison disponibles
       </div>
     );
@@ -166,11 +166,12 @@ export function SwapComparison({
   if (compact) {
     return (
       <div className="inline-flex items-center gap-2">
-        <div className={`p-1 rounded ${qualityInfo.bgColor}`}>
-          <QualityIcon className={`w-3 h-3 ${qualityInfo.color}`} />
+        <div className={`rounded p-1 ${qualityInfo.bgColor}`}>
+          <QualityIcon className={`h-3 w-3 ${qualityInfo.color}`} />
         </div>
         <span className={`text-xs ${percentDiff >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-          {percentDiff >= 0 ? '+' : ''}{percentDiff.toFixed(2)}%
+          {percentDiff >= 0 ? '+' : ''}
+          {percentDiff.toFixed(2)}%
         </span>
       </div>
     );
@@ -178,15 +179,13 @@ export function SwapComparison({
 
   // Full comparison view
   return (
-    <div className="bg-gray-800 rounded-lg p-4 space-y-4">
+    <div className="space-y-4 rounded-lg bg-gray-800 p-4">
       {/* Header with quality badge */}
       <div className="flex items-center justify-between">
         <h4 className="text-sm font-medium text-gray-300">Comparaison Estimé vs Réel</h4>
-        <div className={`px-2 py-1 rounded-full flex items-center gap-1 ${qualityInfo.bgColor}`}>
-          <QualityIcon className={`w-3 h-3 ${qualityInfo.color}`} />
-          <span className={`text-xs font-medium ${qualityInfo.color}`}>
-            {qualityInfo.label}
-          </span>
+        <div className={`flex items-center gap-1 rounded-full px-2 py-1 ${qualityInfo.bgColor}`}>
+          <QualityIcon className={`h-3 w-3 ${qualityInfo.color}`} />
+          <span className={`text-xs font-medium ${qualityInfo.color}`}>{qualityInfo.label}</span>
         </div>
       </div>
 
@@ -194,32 +193,29 @@ export function SwapComparison({
       <div className="space-y-3">
         {/* Estimated */}
         <div>
-          <div className="flex items-center justify-between text-sm mb-1">
+          <div className="mb-1 flex items-center justify-between text-sm">
             <span className="text-gray-400">Estimé</span>
-            <span className="text-white font-mono">{formatAmount(comparison.estimatedOutput)}</span>
+            <span className="font-mono text-white">{formatAmount(comparison.estimatedOutput)}</span>
           </div>
-          <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-blue-500 rounded-full"
-              style={{ width: '100%' }}
-            />
+          <div className="h-2 overflow-hidden rounded-full bg-gray-700">
+            <div className="h-full rounded-full bg-blue-500" style={{ width: '100%' }} />
           </div>
         </div>
 
         {/* Actual */}
         <div>
-          <div className="flex items-center justify-between text-sm mb-1">
+          <div className="mb-1 flex items-center justify-between text-sm">
             <span className="text-gray-400">Réel</span>
-            <span className="text-white font-mono flex items-center gap-1">
+            <span className="flex items-center gap-1 font-mono text-white">
               {formatAmount(comparison.actualOutput)}
               {percentDiff >= 0 ? (
-                <TrendingUp className="w-3 h-3 text-green-400" />
+                <TrendingUp className="h-3 w-3 text-green-400" />
               ) : (
-                <TrendingDown className="w-3 h-3 text-red-400" />
+                <TrendingDown className="h-3 w-3 text-red-400" />
               )}
             </span>
           </div>
-          <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+          <div className="h-2 overflow-hidden rounded-full bg-gray-700">
             <div
               className={`h-full rounded-full transition-all ${
                 percentDiff >= 0 ? 'bg-green-500' : 'bg-red-500'
@@ -232,17 +228,20 @@ export function SwapComparison({
         </div>
 
         {/* Minimum expected */}
-        <div className="text-xs text-gray-500 flex items-center justify-between">
+        <div className="flex items-center justify-between text-xs text-gray-500">
           <span>Minimum attendu (avec slippage)</span>
           <span className="font-mono">{formatAmount(comparison.estimatedMinOutput)}</span>
         </div>
       </div>
 
       {/* Stats grid */}
-      <div className="grid grid-cols-3 gap-3 pt-2 border-t border-gray-700">
+      <div className="grid grid-cols-3 gap-3 border-t border-gray-700 pt-2">
         <div className="text-center">
-          <p className={`text-lg font-bold ${percentDiff >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-            {percentDiff >= 0 ? '+' : ''}{percentDiff.toFixed(2)}%
+          <p
+            className={`text-lg font-bold ${percentDiff >= 0 ? 'text-green-400' : 'text-red-400'}`}
+          >
+            {percentDiff >= 0 ? '+' : ''}
+            {percentDiff.toFixed(2)}%
           </p>
           <p className="text-xs text-gray-500">Différence</p>
         </div>
@@ -253,17 +252,13 @@ export function SwapComparison({
           <p className="text-xs text-gray-500">Slippage Réel</p>
         </div>
         <div className="text-center">
-          <p className="text-lg font-bold text-white">
-            {comparison.priceImpactPct.toFixed(2)}%
-          </p>
+          <p className="text-lg font-bold text-white">{comparison.priceImpactPct.toFixed(2)}%</p>
           <p className="text-xs text-gray-500">Impact Prix</p>
         </div>
       </div>
 
       {/* Quality description */}
-      <div className={`text-xs ${qualityInfo.color} text-center`}>
-        {qualityInfo.description}
-      </div>
+      <div className={`text-xs ${qualityInfo.color} text-center`}>{qualityInfo.description}</div>
     </div>
   );
 }

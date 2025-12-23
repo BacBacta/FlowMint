@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 
 export default function AnalyticsPage() {
   return (
-    <main className="min-h-screen bg-gradient-to-br from-surface-950 via-surface-900 to-surface-950">
+    <main className="from-surface-950 via-surface-900 to-surface-950 min-h-screen bg-gradient-to-br">
       <AnalyticsDashboard />
     </main>
   );

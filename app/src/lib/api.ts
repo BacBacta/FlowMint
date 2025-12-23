@@ -177,7 +177,7 @@ class ApiClient {
   async executePayment(
     paymentId: string,
     payerPublicKey: string,
-    payerMint: string,
+    payerMint: string
   ): Promise<SwapResponse> {
     return this.request(`/api/payment/${paymentId}/execute`, {
       method: 'POST',

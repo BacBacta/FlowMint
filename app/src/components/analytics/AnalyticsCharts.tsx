@@ -21,7 +21,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
 } from 'recharts';
 
@@ -59,14 +58,14 @@ export function AnalyticsCharts() {
         const response = await fetch(`${API_BASE}/analytics/swaps?timeRange=${timeRange}`);
         if (response.ok) {
           const data = await response.json();
-          
+
           // Generate time series data (mock for now, would come from backend)
           const points = generateTimeSeriesPoints(timeRange, data);
           setTimeSeriesData(points);
 
           // Token distribution from top pairs
           if (data.topTokenPairs) {
-            const distribution = data.topTokenPairs.slice(0, 5).map((pair: any, i: number) => ({
+            const distribution = data.topTokenPairs.slice(0, 5).map((pair: any, _i: number) => ({
               name: `${pair.inputMint.slice(0, 4)}.../${pair.outputMint.slice(0, 4)}...`,
               value: pair.count,
             }));
@@ -93,7 +92,7 @@ export function AnalyticsCharts() {
   const generateTimeSeriesPoints = (range: TimeRange, data: any): TimeSeriesData[] => {
     const now = Date.now();
     const points: TimeSeriesData[] = [];
-    
+
     let intervals: number;
     let intervalMs: number;
     let formatDate: (d: Date) => string;
@@ -102,22 +101,22 @@ export function AnalyticsCharts() {
       case '1h':
         intervals = 12;
         intervalMs = 5 * 60 * 1000; // 5 minutes
-        formatDate = (d) => `${d.getHours()}:${d.getMinutes().toString().padStart(2, '0')}`;
+        formatDate = d => `${d.getHours()}:${d.getMinutes().toString().padStart(2, '0')}`;
         break;
       case '24h':
         intervals = 24;
         intervalMs = 60 * 60 * 1000; // 1 hour
-        formatDate = (d) => `${d.getHours()}h`;
+        formatDate = d => `${d.getHours()}h`;
         break;
       case '7d':
         intervals = 7;
         intervalMs = 24 * 60 * 60 * 1000; // 1 day
-        formatDate = (d) => d.toLocaleDateString('fr-FR', { weekday: 'short' });
+        formatDate = d => d.toLocaleDateString('fr-FR', { weekday: 'short' });
         break;
       case '30d':
         intervals = 30;
         intervalMs = 24 * 60 * 60 * 1000; // 1 day
-        formatDate = (d) => `${d.getDate()}/${d.getMonth() + 1}`;
+        formatDate = d => `${d.getDate()}/${d.getMonth() + 1}`;
         break;
     }
 
@@ -131,7 +130,7 @@ export function AnalyticsCharts() {
       points.push({
         timestamp: formatDate(timestamp),
         swaps: Math.round(avgPerInterval * variance),
-        volume: Math.round(parseFloat(data.totalVolume || '0') / intervals * variance),
+        volume: Math.round((parseFloat(data.totalVolume || '0') / intervals) * variance),
         successRate: (data.successRate || 95) + (Math.random() - 0.5) * 10,
       });
     }
@@ -141,11 +140,11 @@ export function AnalyticsCharts() {
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="bg-gray-800 rounded-lg p-6 animate-pulse">
-            <div className="h-4 bg-gray-700 rounded w-1/3 mb-4" />
-            <div className="h-64 bg-gray-700 rounded" />
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {[1, 2, 3, 4].map(i => (
+          <div key={i} className="animate-pulse rounded-lg bg-gray-800 p-6">
+            <div className="mb-4 h-4 w-1/3 rounded bg-gray-700" />
+            <div className="h-64 rounded bg-gray-700" />
           </div>
         ))}
       </div>
@@ -156,15 +155,13 @@ export function AnalyticsCharts() {
     <div className="space-y-6">
       {/* Time range selector */}
       <div className="flex justify-end">
-        <div className="flex bg-gray-800 rounded-lg p-1">
-          {(['1h', '24h', '7d', '30d'] as TimeRange[]).map((range) => (
+        <div className="flex rounded-lg bg-gray-800 p-1">
+          {(['1h', '24h', '7d', '30d'] as TimeRange[]).map(range => (
             <button
               key={range}
               onClick={() => setTimeRange(range)}
-              className={`px-3 py-1 rounded text-sm transition-colors ${
-                timeRange === range
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-400 hover:text-white'
+              className={`rounded px-3 py-1 text-sm transition-colors ${
+                timeRange === range ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
               }`}
             >
               {range}
@@ -173,10 +170,10 @@ export function AnalyticsCharts() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Swaps over time */}
-        <div className="bg-gray-800 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-white mb-4">Swaps dans le temps</h3>
+        <div className="rounded-lg bg-gray-800 p-6">
+          <h3 className="mb-4 text-lg font-semibold text-white">Swaps dans le temps</h3>
           <ResponsiveContainer width="100%" height={300}>
             <AreaChart data={timeSeriesData}>
               <defs>
@@ -209,8 +206,8 @@ export function AnalyticsCharts() {
         </div>
 
         {/* Volume over time */}
-        <div className="bg-gray-800 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-white mb-4">Volume dans le temps</h3>
+        <div className="rounded-lg bg-gray-800 p-6">
+          <h3 className="mb-4 text-lg font-semibold text-white">Volume dans le temps</h3>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={timeSeriesData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
@@ -222,7 +219,7 @@ export function AnalyticsCharts() {
                   border: '1px solid #374151',
                   borderRadius: '8px',
                 }}
-                formatter={(value: number) => [`${value.toLocaleString()}`, 'Volume']}
+                formatter={value => [`${Number(value).toLocaleString()}`, 'Volume']}
               />
               <Bar dataKey="volume" fill="#10b981" radius={[4, 4, 0, 0]} />
             </BarChart>
@@ -230,8 +227,8 @@ export function AnalyticsCharts() {
         </div>
 
         {/* Success rate over time */}
-        <div className="bg-gray-800 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-white mb-4">Taux de succès</h3>
+        <div className="rounded-lg bg-gray-800 p-6">
+          <h3 className="mb-4 text-lg font-semibold text-white">Taux de succès</h3>
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={timeSeriesData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
@@ -243,7 +240,7 @@ export function AnalyticsCharts() {
                   border: '1px solid #374151',
                   borderRadius: '8px',
                 }}
-                formatter={(value: number) => [`${value.toFixed(1)}%`, 'Taux de succès']}
+                formatter={value => [`${Number(value).toFixed(1)}%`, 'Taux de succès']}
               />
               <Line
                 type="monotone"
@@ -258,12 +255,12 @@ export function AnalyticsCharts() {
         </div>
 
         {/* Distribution charts */}
-        <div className="bg-gray-800 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-white mb-4">Distribution</h3>
+        <div className="rounded-lg bg-gray-800 p-6">
+          <h3 className="mb-4 text-lg font-semibold text-white">Distribution</h3>
           <div className="grid grid-cols-2 gap-4">
             {/* Status distribution */}
             <div>
-              <h4 className="text-sm text-gray-400 mb-2 text-center">Statut</h4>
+              <h4 className="mb-2 text-center text-sm text-gray-400">Statut</h4>
               <ResponsiveContainer width="100%" height={150}>
                 <PieChart>
                   <Pie
@@ -290,11 +287,11 @@ export function AnalyticsCharts() {
               </ResponsiveContainer>
               <div className="flex justify-center gap-4 text-xs">
                 <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 rounded-full bg-green-500" />
+                  <div className="h-3 w-3 rounded-full bg-green-500" />
                   <span className="text-gray-400">Réussis</span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 rounded-full bg-red-500" />
+                  <div className="h-3 w-3 rounded-full bg-red-500" />
                   <span className="text-gray-400">Échoués</span>
                 </div>
               </div>
@@ -302,7 +299,7 @@ export function AnalyticsCharts() {
 
             {/* Token pairs distribution */}
             <div>
-              <h4 className="text-sm text-gray-400 mb-2 text-center">Top Paires</h4>
+              <h4 className="mb-2 text-center text-sm text-gray-400">Top Paires</h4>
               <ResponsiveContainer width="100%" height={150}>
                 <PieChart>
                   <Pie
@@ -330,10 +327,10 @@ export function AnalyticsCharts() {
                 {tokenDistribution.slice(0, 3).map((item, index) => (
                   <div key={item.name} className="flex items-center gap-1">
                     <div
-                      className="w-2 h-2 rounded-full"
+                      className="h-2 w-2 rounded-full"
                       style={{ backgroundColor: COLORS[index] }}
                     />
-                    <span className="text-gray-400 truncate max-w-[60px]">{item.name}</span>
+                    <span className="max-w-[60px] truncate text-gray-400">{item.name}</span>
                   </div>
                 ))}
               </div>

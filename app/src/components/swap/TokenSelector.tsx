@@ -20,16 +20,16 @@ export function TokenSelector({ selectedToken, onSelectToken, tokens }: TokenSel
   const [searchQuery, setSearchQuery] = useState('');
 
   const filteredTokens = tokens.filter(
-    (token) =>
+    token =>
       token.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      token.mint.toLowerCase().includes(searchQuery.toLowerCase()),
+      token.mint.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
     <div className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 rounded-xl bg-surface-200 px-4 py-2 font-medium text-surface-900 hover:bg-surface-300 transition-colors dark:bg-surface-700 dark:text-white dark:hover:bg-surface-600"
+        className="bg-surface-200 text-surface-900 hover:bg-surface-300 dark:bg-surface-700 dark:hover:bg-surface-600 flex items-center gap-2 rounded-xl px-4 py-2 font-medium transition-colors dark:text-white"
       >
         {selectedToken.logoURI ? (
           <img
@@ -38,7 +38,7 @@ export function TokenSelector({ selectedToken, onSelectToken, tokens }: TokenSel
             className="h-6 w-6 rounded-full"
           />
         ) : (
-          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary-500 text-xs font-bold text-white">
+          <div className="bg-primary-500 flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold text-white">
             {selectedToken.symbol[0]}
           </div>
         )}
@@ -58,19 +58,16 @@ export function TokenSelector({ selectedToken, onSelectToken, tokens }: TokenSel
       {isOpen && (
         <>
           {/* Backdrop */}
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setIsOpen(false)}
-          />
-          
+          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
+
           {/* Dropdown Menu */}
-          <div className="absolute right-0 top-full z-50 mt-2 w-72 rounded-xl border border-surface-200 bg-white p-2 shadow-xl dark:border-surface-700 dark:bg-surface-800">
+          <div className="border-surface-200 dark:border-surface-700 dark:bg-surface-800 absolute right-0 top-full z-50 mt-2 w-72 rounded-xl border bg-white p-2 shadow-xl">
             {/* Search */}
             <div className="mb-2 p-2">
               <input
                 type="text"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={e => setSearchQuery(e.target.value)}
                 placeholder="Search tokens..."
                 className="input w-full"
                 autoFocus
@@ -80,11 +77,9 @@ export function TokenSelector({ selectedToken, onSelectToken, tokens }: TokenSel
             {/* Token List */}
             <div className="max-h-64 overflow-y-auto">
               {filteredTokens.length === 0 ? (
-                <div className="py-4 text-center text-sm text-surface-500">
-                  No tokens found
-                </div>
+                <div className="text-surface-500 py-4 text-center text-sm">No tokens found</div>
               ) : (
-                filteredTokens.map((token) => (
+                filteredTokens.map(token => (
                   <button
                     key={token.mint}
                     onClick={() => {
@@ -105,21 +100,21 @@ export function TokenSelector({ selectedToken, onSelectToken, tokens }: TokenSel
                         className="h-8 w-8 rounded-full"
                       />
                     ) : (
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-500 text-sm font-bold text-white">
+                      <div className="bg-primary-500 flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold text-white">
                         {token.symbol[0]}
                       </div>
                     )}
                     <div>
-                      <div className="font-medium text-surface-900 dark:text-white">
+                      <div className="text-surface-900 font-medium dark:text-white">
                         {token.symbol}
                       </div>
-                      <div className="text-xs text-surface-500">
+                      <div className="text-surface-500 text-xs">
                         {token.mint.slice(0, 8)}...{token.mint.slice(-6)}
                       </div>
                     </div>
                     {token.mint === selectedToken.mint && (
                       <svg
-                        className="ml-auto h-5 w-5 text-primary-500"
+                        className="text-primary-500 ml-auto h-5 w-5"
                         fill="currentColor"
                         viewBox="0 0 20 20"
                       >

@@ -19,22 +19,20 @@ export default function SwapPage() {
         <div className="mx-auto max-w-2xl px-4 sm:px-6 lg:px-8">
           {/* Page Header */}
           <div className="mb-8 text-center">
-            <h1 className="text-3xl font-bold text-surface-900 dark:text-white">
-              Token Swap
-            </h1>
-            <p className="mt-2 text-surface-600 dark:text-surface-400">
+            <h1 className="text-surface-900 text-3xl font-bold dark:text-white">Token Swap</h1>
+            <p className="text-surface-600 dark:text-surface-400 mt-2">
               Swap tokens with optimal routing through Jupiter
             </p>
           </div>
 
           {/* Tabs */}
           <div className="mb-6 flex justify-center">
-            <div className="inline-flex rounded-lg bg-surface-100 p-1 dark:bg-surface-800">
+            <div className="bg-surface-100 dark:bg-surface-800 inline-flex rounded-lg p-1">
               <button
                 onClick={() => setActiveTab('swap')}
                 className={`rounded-md px-6 py-2 text-sm font-medium transition-colors ${
                   activeTab === 'swap'
-                    ? 'bg-white text-surface-900 shadow dark:bg-surface-700 dark:text-white'
+                    ? 'text-surface-900 dark:bg-surface-700 bg-white shadow dark:text-white'
                     : 'text-surface-600 hover:text-surface-900 dark:text-surface-400 dark:hover:text-white'
                 }`}
               >
@@ -44,7 +42,7 @@ export default function SwapPage() {
                 onClick={() => setActiveTab('history')}
                 className={`rounded-md px-6 py-2 text-sm font-medium transition-colors ${
                   activeTab === 'history'
-                    ? 'bg-white text-surface-900 shadow dark:bg-surface-700 dark:text-white'
+                    ? 'text-surface-900 dark:bg-surface-700 bg-white shadow dark:text-white'
                     : 'text-surface-600 hover:text-surface-900 dark:text-surface-400 dark:hover:text-white'
                 }`}
               >
@@ -58,7 +56,7 @@ export default function SwapPage() {
             <div className="card text-center">
               <div className="py-12">
                 <svg
-                  className="mx-auto h-12 w-12 text-surface-400"
+                  className="text-surface-400 mx-auto h-12 w-12"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -70,10 +68,10 @@ export default function SwapPage() {
                     d="M21 12a2.25 2.25 0 00-2.25-2.25H15a3 3 0 11-6 0H5.25A2.25 2.25 0 003 12m18 0v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6m18 0V9M3 12V9m18 0a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 9m18 0V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v3"
                   />
                 </svg>
-                <h3 className="mt-4 text-lg font-medium text-surface-900 dark:text-white">
+                <h3 className="text-surface-900 mt-4 text-lg font-medium dark:text-white">
                   Connect your wallet
                 </h3>
-                <p className="mt-2 text-surface-600 dark:text-surface-400">
+                <p className="text-surface-600 dark:text-surface-400 mt-2">
                   Connect your Solana wallet to start swapping tokens
                 </p>
               </div>

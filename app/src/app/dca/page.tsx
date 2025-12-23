@@ -87,10 +87,10 @@ export default function DCAPage() {
         <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
           {/* Page Header */}
           <div className="mb-8 text-center">
-            <h1 className="text-3xl font-bold text-surface-900 dark:text-white">
+            <h1 className="text-surface-900 text-3xl font-bold dark:text-white">
               Dollar Cost Averaging
             </h1>
-            <p className="mt-2 text-surface-600 dark:text-surface-400">
+            <p className="text-surface-600 dark:text-surface-400 mt-2">
               Automatically buy tokens at regular intervals
             </p>
           </div>
@@ -98,12 +98,12 @@ export default function DCAPage() {
           <div className="grid gap-8 lg:grid-cols-2">
             {/* Create DCA Form */}
             <div className="card">
-              <h2 className="mb-6 text-xl font-semibold text-surface-900 dark:text-white">
+              <h2 className="text-surface-900 mb-6 text-xl font-semibold dark:text-white">
                 Create DCA Order
               </h2>
 
               {!connected ? (
-                <div className="py-8 text-center text-surface-600 dark:text-surface-400">
+                <div className="text-surface-600 dark:text-surface-400 py-8 text-center">
                   Connect your wallet to create DCA orders
                 </div>
               ) : (
@@ -113,13 +113,13 @@ export default function DCAPage() {
                     <label className="label mb-2">Spend</label>
                     <select
                       value={inputToken.mint}
-                      onChange={(e) => {
-                        const token = POPULAR_TOKENS.find((t) => t.mint === e.target.value);
+                      onChange={e => {
+                        const token = POPULAR_TOKENS.find(t => t.mint === e.target.value);
                         if (token) setInputToken(token);
                       }}
                       className="input w-full"
                     >
-                      {POPULAR_TOKENS.map((token) => (
+                      {POPULAR_TOKENS.map(token => (
                         <option key={token.mint} value={token.mint}>
                           {token.symbol}
                         </option>
@@ -132,13 +132,13 @@ export default function DCAPage() {
                     <label className="label mb-2">To receive</label>
                     <select
                       value={outputToken.mint}
-                      onChange={(e) => {
-                        const token = POPULAR_TOKENS.find((t) => t.mint === e.target.value);
+                      onChange={e => {
+                        const token = POPULAR_TOKENS.find(t => t.mint === e.target.value);
                         if (token) setOutputToken(token);
                       }}
                       className="input w-full"
                     >
-                      {POPULAR_TOKENS.filter((t) => t.mint !== inputToken.mint).map((token) => (
+                      {POPULAR_TOKENS.filter(t => t.mint !== inputToken.mint).map(token => (
                         <option key={token.mint} value={token.mint}>
                           {token.symbol}
                         </option>
@@ -152,7 +152,7 @@ export default function DCAPage() {
                     <input
                       type="number"
                       value={totalAmount}
-                      onChange={(e) => setTotalAmount(e.target.value)}
+                      onChange={e => setTotalAmount(e.target.value)}
                       placeholder="0.0"
                       className="input w-full"
                       min={0}
@@ -165,7 +165,7 @@ export default function DCAPage() {
                     <input
                       type="number"
                       value={numberOfOrders}
-                      onChange={(e) => setNumberOfOrders(parseInt(e.target.value) || 1)}
+                      onChange={e => setNumberOfOrders(parseInt(e.target.value) || 1)}
                       className="input w-full"
                       min={2}
                       max={100}
@@ -177,10 +177,10 @@ export default function DCAPage() {
                     <label className="label mb-2">Frequency</label>
                     <select
                       value={interval}
-                      onChange={(e) => setInterval(parseInt(e.target.value))}
+                      onChange={e => setInterval(parseInt(e.target.value))}
                       className="input w-full"
                     >
-                      {INTERVALS.map((i) => (
+                      {INTERVALS.map(i => (
                         <option key={i.value} value={i.value}>
                           {i.label}
                         </option>
@@ -190,17 +190,17 @@ export default function DCAPage() {
 
                   {/* Summary */}
                   {totalAmount && parseFloat(totalAmount) > 0 && (
-                    <div className="rounded-lg bg-surface-50 p-4 dark:bg-surface-900">
-                      <div className="text-sm text-surface-600 dark:text-surface-400">
+                    <div className="bg-surface-50 dark:bg-surface-900 rounded-lg p-4">
+                      <div className="text-surface-600 dark:text-surface-400 text-sm">
                         You will swap{' '}
-                        <span className="font-medium text-surface-900 dark:text-white">
+                        <span className="text-surface-900 font-medium dark:text-white">
                           {amountPerOrder} {inputToken.symbol}
                         </span>{' '}
                         for{' '}
-                        <span className="font-medium text-surface-900 dark:text-white">
+                        <span className="text-surface-900 font-medium dark:text-white">
                           {outputToken.symbol}
                         </span>{' '}
-                        {INTERVALS.find((i) => i.value === interval)?.label.toLowerCase()},{' '}
+                        {INTERVALS.find(i => i.value === interval)?.label.toLowerCase()},{' '}
                         {numberOfOrders} times.
                       </div>
                     </div>
@@ -216,9 +216,7 @@ export default function DCAPage() {
                   </button>
 
                   {createDCA.isError && (
-                    <div className="text-sm text-red-500">
-                      {(createDCA.error as Error).message}
-                    </div>
+                    <div className="text-sm text-red-500">{(createDCA.error as Error).message}</div>
                   )}
                 </div>
               )}
@@ -226,19 +224,34 @@ export default function DCAPage() {
 
             {/* Active DCA Orders */}
             <div className="card">
-              <h2 className="mb-6 text-xl font-semibold text-surface-900 dark:text-white">
+              <h2 className="text-surface-900 mb-6 text-xl font-semibold dark:text-white">
                 Active DCA Orders
               </h2>
 
               {intentsLoading ? (
                 <div className="flex items-center justify-center py-8">
-                  <svg className="h-8 w-8 animate-spin text-primary-500" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  <svg
+                    className="text-primary-500 h-8 w-8 animate-spin"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                    />
                   </svg>
                 </div>
               ) : !intents || intents.length === 0 ? (
-                <div className="py-8 text-center text-surface-600 dark:text-surface-400">
+                <div className="text-surface-600 dark:text-surface-400 py-8 text-center">
                   No active DCA orders
                 </div>
               ) : (
@@ -246,14 +259,14 @@ export default function DCAPage() {
                   {intents.map((intent: any) => (
                     <div
                       key={intent.id}
-                      className="rounded-lg border border-surface-200 p-4 dark:border-surface-700"
+                      className="border-surface-200 dark:border-surface-700 rounded-lg border p-4"
                     >
                       <div className="flex items-center justify-between">
                         <div>
-                          <div className="font-medium text-surface-900 dark:text-white">
+                          <div className="text-surface-900 font-medium dark:text-white">
                             {intent.inputMint.slice(0, 4)}... → {intent.outputMint.slice(0, 4)}...
                           </div>
-                          <div className="text-sm text-surface-500">
+                          <div className="text-surface-500 text-sm">
                             {intent.ordersExecuted || 0} / {intent.numberOfOrders} orders
                           </div>
                         </div>
@@ -265,9 +278,9 @@ export default function DCAPage() {
                           Cancel
                         </button>
                       </div>
-                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-200 dark:bg-surface-700">
+                      <div className="bg-surface-200 dark:bg-surface-700 mt-2 h-2 overflow-hidden rounded-full">
                         <div
-                          className="h-full bg-primary-500"
+                          className="bg-primary-500 h-full"
                           style={{
                             width: `${((intent.ordersExecuted || 0) / intent.numberOfOrders) * 100}%`,
                           }}

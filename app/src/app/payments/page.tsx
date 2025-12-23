@@ -8,7 +8,7 @@ import { Footer } from '@/components/Footer';
 import { apiClient } from '@/lib/api';
 
 export default function PaymentsPage() {
-  const { publicKey, connected } = useWallet();
+  const { publicKey: _publicKey, connected } = useWallet();
   const [activeTab, setActiveTab] = useState<'create' | 'pay'>('create');
 
   // Merchant form state
@@ -29,7 +29,7 @@ export default function PaymentsPage() {
         amountUsdc: parseFloat(amountUsdc),
       });
     },
-    onSuccess: (data) => {
+    onSuccess: data => {
       setPaymentLink(data);
     },
   });
@@ -52,22 +52,22 @@ export default function PaymentsPage() {
         <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
           {/* Page Header */}
           <div className="mb-8 text-center">
-            <h1 className="text-3xl font-bold text-surface-900 dark:text-white">
+            <h1 className="text-surface-900 text-3xl font-bold dark:text-white">
               Pay Any Token → USDC
             </h1>
-            <p className="mt-2 text-surface-600 dark:text-surface-400">
+            <p className="text-surface-600 dark:text-surface-400 mt-2">
               Accept payments in any token, receive USDC automatically
             </p>
           </div>
 
           {/* Tabs */}
           <div className="mb-8 flex justify-center">
-            <div className="inline-flex rounded-lg bg-surface-100 p-1 dark:bg-surface-800">
+            <div className="bg-surface-100 dark:bg-surface-800 inline-flex rounded-lg p-1">
               <button
                 onClick={() => setActiveTab('create')}
                 className={`rounded-md px-6 py-2 text-sm font-medium transition-colors ${
                   activeTab === 'create'
-                    ? 'bg-white text-surface-900 shadow dark:bg-surface-700 dark:text-white'
+                    ? 'text-surface-900 dark:bg-surface-700 bg-white shadow dark:text-white'
                     : 'text-surface-600 hover:text-surface-900 dark:text-surface-400 dark:hover:text-white'
                 }`}
               >
@@ -77,7 +77,7 @@ export default function PaymentsPage() {
                 onClick={() => setActiveTab('pay')}
                 className={`rounded-md px-6 py-2 text-sm font-medium transition-colors ${
                   activeTab === 'pay'
-                    ? 'bg-white text-surface-900 shadow dark:bg-surface-700 dark:text-white'
+                    ? 'text-surface-900 dark:bg-surface-700 bg-white shadow dark:text-white'
                     : 'text-surface-600 hover:text-surface-900 dark:text-surface-400 dark:hover:text-white'
                 }`}
               >
@@ -91,7 +91,7 @@ export default function PaymentsPage() {
             <div className="grid gap-8 lg:grid-cols-2">
               {/* Form */}
               <div className="card">
-                <h2 className="mb-6 text-xl font-semibold text-surface-900 dark:text-white">
+                <h2 className="text-surface-900 mb-6 text-xl font-semibold dark:text-white">
                   Create Payment Link
                 </h2>
 
@@ -102,7 +102,7 @@ export default function PaymentsPage() {
                     <input
                       type="text"
                       value={merchantId}
-                      onChange={(e) => setMerchantId(e.target.value)}
+                      onChange={e => setMerchantId(e.target.value)}
                       placeholder="your-merchant-id"
                       className="input w-full"
                     />
@@ -114,7 +114,7 @@ export default function PaymentsPage() {
                     <input
                       type="text"
                       value={orderId}
-                      onChange={(e) => setOrderId(e.target.value)}
+                      onChange={e => setOrderId(e.target.value)}
                       placeholder="INV-001"
                       className="input w-full"
                     />
@@ -126,7 +126,7 @@ export default function PaymentsPage() {
                     <input
                       type="number"
                       value={amountUsdc}
-                      onChange={(e) => setAmountUsdc(e.target.value)}
+                      onChange={e => setAmountUsdc(e.target.value)}
                       placeholder="100.00"
                       className="input w-full"
                       min={0}
@@ -153,14 +153,14 @@ export default function PaymentsPage() {
 
               {/* Result */}
               <div className="card">
-                <h2 className="mb-6 text-xl font-semibold text-surface-900 dark:text-white">
+                <h2 className="text-surface-900 mb-6 text-xl font-semibold dark:text-white">
                   Payment Link
                 </h2>
 
                 {!paymentLink ? (
                   <div className="flex flex-col items-center justify-center py-8 text-center">
                     <svg
-                      className="h-12 w-12 text-surface-400"
+                      className="text-surface-400 h-12 w-12"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
@@ -172,23 +172,23 @@ export default function PaymentsPage() {
                         d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244"
                       />
                     </svg>
-                    <p className="mt-4 text-surface-600 dark:text-surface-400">
+                    <p className="text-surface-600 dark:text-surface-400 mt-4">
                       Create a payment link to see it here
                     </p>
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    <div className="rounded-lg bg-surface-50 p-4 dark:bg-surface-900">
-                      <div className="text-sm text-surface-600 dark:text-surface-400">
+                    <div className="bg-surface-50 dark:bg-surface-900 rounded-lg p-4">
+                      <div className="text-surface-600 dark:text-surface-400 text-sm">
                         Payment ID
                       </div>
-                      <div className="mt-1 font-mono text-sm text-surface-900 dark:text-white">
+                      <div className="text-surface-900 mt-1 font-mono text-sm dark:text-white">
                         {paymentLink.paymentId}
                       </div>
                     </div>
 
-                    <div className="rounded-lg bg-surface-50 p-4 dark:bg-surface-900">
-                      <div className="text-sm text-surface-600 dark:text-surface-400">
+                    <div className="bg-surface-50 dark:bg-surface-900 rounded-lg p-4">
+                      <div className="text-surface-600 dark:text-surface-400 text-sm">
                         Payment URL
                       </div>
                       <div className="mt-1 flex items-center gap-2">
@@ -207,19 +207,17 @@ export default function PaymentsPage() {
                       </div>
                     </div>
 
-                    <div className="rounded-lg bg-surface-50 p-4 dark:bg-surface-900">
-                      <div className="text-sm text-surface-600 dark:text-surface-400">
-                        Expires
-                      </div>
-                      <div className="mt-1 text-sm text-surface-900 dark:text-white">
+                    <div className="bg-surface-50 dark:bg-surface-900 rounded-lg p-4">
+                      <div className="text-surface-600 dark:text-surface-400 text-sm">Expires</div>
+                      <div className="text-surface-900 mt-1 text-sm dark:text-white">
                         {new Date(paymentLink.expiresAt).toLocaleString()}
                       </div>
                     </div>
 
                     {/* QR Code Placeholder */}
                     <div className="flex justify-center">
-                      <div className="flex h-32 w-32 items-center justify-center rounded-lg bg-white dark:bg-surface-700">
-                        <span className="text-xs text-surface-400">QR Code</span>
+                      <div className="dark:bg-surface-700 flex h-32 w-32 items-center justify-center rounded-lg bg-white">
+                        <span className="text-surface-400 text-xs">QR Code</span>
                       </div>
                     </div>
                   </div>
@@ -231,12 +229,12 @@ export default function PaymentsPage() {
           {/* Pay Invoice Tab */}
           {activeTab === 'pay' && (
             <div className="card mx-auto max-w-xl">
-              <h2 className="mb-6 text-xl font-semibold text-surface-900 dark:text-white">
+              <h2 className="text-surface-900 mb-6 text-xl font-semibold dark:text-white">
                 Pay Invoice
               </h2>
 
               {!connected ? (
-                <div className="py-8 text-center text-surface-600 dark:text-surface-400">
+                <div className="text-surface-600 dark:text-surface-400 py-8 text-center">
                   Connect your wallet to pay invoices
                 </div>
               ) : (
@@ -247,7 +245,7 @@ export default function PaymentsPage() {
                     <input
                       type="text"
                       value={paymentId}
-                      onChange={(e) => setPaymentId(e.target.value)}
+                      onChange={e => setPaymentId(e.target.value)}
                       placeholder="Enter payment ID"
                       className="input w-full"
                     />
@@ -255,11 +253,11 @@ export default function PaymentsPage() {
 
                   {/* Payment Status */}
                   {paymentId && (
-                    <div className="rounded-lg bg-surface-50 p-4 dark:bg-surface-900">
+                    <div className="bg-surface-50 dark:bg-surface-900 rounded-lg p-4">
                       {statusLoading ? (
                         <div className="flex items-center justify-center py-4">
                           <svg
-                            className="h-6 w-6 animate-spin text-primary-500"
+                            className="text-primary-500 h-6 w-6 animate-spin"
                             fill="none"
                             viewBox="0 0 24 24"
                           >
@@ -282,7 +280,7 @@ export default function PaymentsPage() {
                         <div className="space-y-2">
                           <div className="flex justify-between">
                             <span className="text-surface-600 dark:text-surface-400">Amount</span>
-                            <span className="font-medium text-surface-900 dark:text-white">
+                            <span className="text-surface-900 font-medium dark:text-white">
                               ${paymentStatus.amountUsdc} USDC
                             </span>
                           </div>
@@ -308,7 +306,7 @@ export default function PaymentsPage() {
                           </div>
                         </div>
                       ) : (
-                        <div className="text-center text-surface-600 dark:text-surface-400">
+                        <div className="text-surface-600 dark:text-surface-400 text-center">
                           Payment not found
                         </div>
                       )}
@@ -316,11 +314,11 @@ export default function PaymentsPage() {
                   )}
 
                   {/* How it works */}
-                  <div className="rounded-lg bg-primary-50 p-4 dark:bg-primary-900/20">
-                    <h3 className="font-medium text-primary-800 dark:text-primary-200">
+                  <div className="bg-primary-50 dark:bg-primary-900/20 rounded-lg p-4">
+                    <h3 className="text-primary-800 dark:text-primary-200 font-medium">
                       How it works
                     </h3>
-                    <ul className="mt-2 space-y-1 text-sm text-primary-700 dark:text-primary-300">
+                    <ul className="text-primary-700 dark:text-primary-300 mt-2 space-y-1 text-sm">
                       <li>• Pay using any token in your wallet</li>
                       <li>• We automatically swap to USDC via Jupiter</li>
                       <li>• Merchant receives exact USDC amount</li>

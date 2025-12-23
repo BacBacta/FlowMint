@@ -19,7 +19,6 @@ import {
   RefreshCw,
   ArrowUpRight,
   ArrowDownRight,
-  LineChart,
 } from 'lucide-react';
 
 import { AnalyticsCharts } from './AnalyticsCharts';
@@ -94,7 +93,9 @@ export function AnalyticsDashboard() {
   const [swapAnalytics, setSwapAnalytics] = useState<SwapAnalytics | null>(null);
   const [executionStats, setExecutionStats] = useState<ExecutionStats | null>(null);
   const [userStats, setUserStats] = useState<UserStats | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'charts' | 'swaps' | 'execution' | 'user'>('overview');
+  const [activeTab, setActiveTab] = useState<
+    'overview' | 'charts' | 'swaps' | 'execution' | 'user'
+  >('overview');
 
   // Fetch data
   const fetchData = async () => {
@@ -177,47 +178,49 @@ export function AnalyticsDashboard() {
     };
 
     return (
-      <div className={`p-4 rounded-lg border ${colorClasses[color]}`}>
-        <div className="flex items-center justify-between mb-2">
-          <Icon className="w-5 h-5" />
+      <div className={`rounded-lg border p-4 ${colorClasses[color]}`}>
+        <div className="mb-2 flex items-center justify-between">
+          <Icon className="h-5 w-5" />
           {trend && (
-            <span className={`flex items-center text-xs ${trend === 'up' ? 'text-green-400' : trend === 'down' ? 'text-red-400' : 'text-gray-400'}`}>
-              {trend === 'up' ? <ArrowUpRight className="w-3 h-3" /> : trend === 'down' ? <ArrowDownRight className="w-3 h-3" /> : null}
+            <span
+              className={`flex items-center text-xs ${trend === 'up' ? 'text-green-400' : trend === 'down' ? 'text-red-400' : 'text-gray-400'}`}
+            >
+              {trend === 'up' ? (
+                <ArrowUpRight className="h-3 w-3" />
+              ) : trend === 'down' ? (
+                <ArrowDownRight className="h-3 w-3" />
+              ) : null}
             </span>
           )}
         </div>
         <p className="text-2xl font-bold text-white">{value}</p>
         <p className="text-sm text-gray-400">{label}</p>
-        {subValue && <p className="text-xs text-gray-500 mt-1">{subValue}</p>}
+        {subValue && <p className="mt-1 text-xs text-gray-500">{subValue}</p>}
       </div>
     );
   };
 
   return (
-    <div className="max-w-7xl mx-auto p-6">
+    <div className="mx-auto max-w-7xl p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <BarChart3 className="w-6 h-6 text-blue-400" />
+          <h1 className="flex items-center gap-2 text-2xl font-bold text-white">
+            <BarChart3 className="h-6 w-6 text-blue-400" />
             Analytics
           </h1>
-          <p className="text-gray-400 text-sm mt-1">
-            Statistiques de la plateforme FlowMint
-          </p>
+          <p className="mt-1 text-sm text-gray-400">Statistiques de la plateforme FlowMint</p>
         </div>
 
         <div className="flex items-center gap-4">
           {/* Time range selector */}
-          <div className="flex bg-gray-800 rounded-lg p-1">
+          <div className="flex rounded-lg bg-gray-800 p-1">
             {(['1h', '24h', '7d', '30d', 'all'] as TimeRange[]).map(range => (
               <button
                 key={range}
                 onClick={() => setTimeRange(range)}
-                className={`px-3 py-1 rounded text-sm transition-colors ${
-                  timeRange === range
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-400 hover:text-white'
+                className={`rounded px-3 py-1 text-sm transition-colors ${
+                  timeRange === range ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
                 }`}
               >
                 {range === 'all' ? 'Tout' : range}
@@ -228,17 +231,17 @@ export function AnalyticsDashboard() {
           <button
             onClick={fetchData}
             disabled={isLoading}
-            className="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors disabled:opacity-50"
+            className="rounded-lg bg-gray-800 p-2 transition-colors hover:bg-gray-700 disabled:opacity-50"
           >
-            <RefreshCw className={`w-5 h-5 text-gray-300 ${isLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-5 w-5 text-gray-300 ${isLoading ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-700 mb-6">
+      <div className="mb-6 flex border-b border-gray-700">
         {[
-          { id: 'overview', label: 'Vue d\'ensemble' },
+          { id: 'overview', label: "Vue d'ensemble" },
           { id: 'charts', label: 'Graphiques' },
           { id: 'swaps', label: 'Swaps' },
           { id: 'execution', label: 'Exécution' },
@@ -247,7 +250,7 @@ export function AnalyticsDashboard() {
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id as typeof activeTab)}
-            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
               activeTab === tab.id
                 ? 'border-blue-500 text-blue-400'
                 : 'border-transparent text-gray-400 hover:text-white'
@@ -261,19 +264,17 @@ export function AnalyticsDashboard() {
       {/* Loading state */}
       {isLoading && (
         <div className="flex items-center justify-center py-12">
-          <div className="animate-spin w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full" />
+          <div className="border-3 h-8 w-8 animate-spin rounded-full border-blue-500 border-t-transparent" />
         </div>
       )}
 
       {/* Charts Tab */}
-      {!isLoading && activeTab === 'charts' && (
-        <AnalyticsCharts />
-      )}
+      {!isLoading && activeTab === 'charts' && <AnalyticsCharts />}
 
       {/* Overview Tab */}
       {!isLoading && activeTab === 'overview' && overview && (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
             <StatCard
               icon={Activity}
               label="Total Swaps"
@@ -301,7 +302,7 @@ export function AnalyticsDashboard() {
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <StatCard
               icon={Clock}
               label="Temps d'exécution moyen"
@@ -323,17 +324,19 @@ export function AnalyticsDashboard() {
           </div>
 
           {/* Success Rate Bar */}
-          <div className="bg-gray-800 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-white mb-4">Taux de Succès</h3>
-            <div className="relative h-4 bg-gray-700 rounded-full overflow-hidden">
+          <div className="rounded-lg bg-gray-800 p-6">
+            <h3 className="mb-4 text-lg font-semibold text-white">Taux de Succès</h3>
+            <div className="relative h-4 overflow-hidden rounded-full bg-gray-700">
               <div
-                className="absolute top-0 left-0 h-full bg-gradient-to-r from-green-500 to-green-400 transition-all duration-500"
+                className="absolute left-0 top-0 h-full bg-gradient-to-r from-green-500 to-green-400 transition-all duration-500"
                 style={{ width: `${overview.successRate}%` }}
               />
             </div>
-            <div className="flex justify-between text-sm text-gray-400 mt-2">
+            <div className="mt-2 flex justify-between text-sm text-gray-400">
               <span>0%</span>
-              <span className="text-green-400 font-medium">{formatPercent(overview.successRate)}</span>
+              <span className="font-medium text-green-400">
+                {formatPercent(overview.successRate)}
+              </span>
               <span>100%</span>
             </div>
           </div>
@@ -343,7 +346,7 @@ export function AnalyticsDashboard() {
       {/* Swaps Tab */}
       {!isLoading && activeTab === 'swaps' && swapAnalytics && (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
             <StatCard
               icon={Activity}
               label="Total Swaps"
@@ -372,12 +375,12 @@ export function AnalyticsDashboard() {
 
           {/* Top Token Pairs */}
           {swapAnalytics.topTokenPairs && swapAnalytics.topTokenPairs.length > 0 && (
-            <div className="bg-gray-800 rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">Top Paires de Tokens</h3>
+            <div className="rounded-lg bg-gray-800 p-6">
+              <h3 className="mb-4 text-lg font-semibold text-white">Top Paires de Tokens</h3>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="text-left text-gray-400 text-sm">
+                    <tr className="text-left text-sm text-gray-400">
                       <th className="pb-3">Paire</th>
                       <th className="pb-3">Swaps</th>
                       <th className="pb-3">Volume</th>
@@ -404,7 +407,7 @@ export function AnalyticsDashboard() {
       {/* Execution Tab */}
       {!isLoading && activeTab === 'execution' && executionStats && (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
             <StatCard
               icon={Activity}
               label="Exécutions Totales"
@@ -434,12 +437,12 @@ export function AnalyticsDashboard() {
 
           {/* RPC Stats */}
           {executionStats.rpcStats && Object.keys(executionStats.rpcStats).length > 0 && (
-            <div className="bg-gray-800 rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">Statistiques RPC</h3>
+            <div className="rounded-lg bg-gray-800 p-6">
+              <h3 className="mb-4 text-lg font-semibold text-white">Statistiques RPC</h3>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="text-left text-gray-400 text-sm">
+                    <tr className="text-left text-sm text-gray-400">
                       <th className="pb-3">Endpoint</th>
                       <th className="pb-3">Requêtes</th>
                       <th className="pb-3">Échecs</th>
@@ -449,9 +452,7 @@ export function AnalyticsDashboard() {
                   <tbody className="divide-y divide-gray-700">
                     {Object.entries(executionStats.rpcStats).map(([endpoint, stats]) => (
                       <tr key={endpoint} className="text-gray-300">
-                        <td className="py-3 font-mono text-sm truncate max-w-xs">
-                          {endpoint}
-                        </td>
+                        <td className="max-w-xs truncate py-3 font-mono text-sm">{endpoint}</td>
                         <td className="py-3">{formatNumber(stats.requests)}</td>
                         <td className="py-3 text-red-400">{formatNumber(stats.failures)}</td>
                         <td className="py-3">{formatTime(stats.averageLatency)}</td>
@@ -468,7 +469,7 @@ export function AnalyticsDashboard() {
       {/* User Tab */}
       {!isLoading && activeTab === 'user' && publicKey && userStats && (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
             <StatCard
               icon={Activity}
               label="Mes Swaps"
@@ -496,7 +497,7 @@ export function AnalyticsDashboard() {
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <StatCard
               icon={CheckCircle}
               label="Swaps Réussis"
@@ -521,7 +522,7 @@ export function AnalyticsDashboard() {
 
       {/* No wallet connected message for user tab */}
       {!isLoading && activeTab === 'user' && !publicKey && (
-        <div className="text-center py-12">
+        <div className="py-12 text-center">
           <p className="text-gray-400">
             Connectez votre wallet pour voir vos statistiques personnelles.
           </p>

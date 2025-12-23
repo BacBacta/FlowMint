@@ -38,9 +38,7 @@ export function NotificationBell() {
 
     try {
       setIsLoading(true);
-      const response = await fetch(
-        `${API_BASE}/notifications/${publicKey.toBase58()}?limit=20`
-      );
+      const response = await fetch(`${API_BASE}/notifications/${publicKey.toBase58()}?limit=20`);
       if (response.ok) {
         const data = await response.json();
         setNotifications(data.notifications || []);
@@ -77,10 +75,8 @@ export function NotificationBell() {
       await fetch(`${API_BASE}/notifications/${notificationId}/read`, {
         method: 'POST',
       });
-      
-      setNotifications(prev =>
-        prev.map(n => (n.id === notificationId ? { ...n, read: true } : n))
-      );
+
+      setNotifications(prev => prev.map(n => (n.id === notificationId ? { ...n, read: true } : n)));
       setUnreadCount(prev => Math.max(0, prev - 1));
     } catch (error) {
       console.error('Failed to mark notification as read:', error);
@@ -95,7 +91,7 @@ export function NotificationBell() {
       await fetch(`${API_BASE}/notifications/${publicKey.toBase58()}/read-all`, {
         method: 'POST',
       });
-      
+
       setNotifications(prev => prev.map(n => ({ ...n, read: true })));
       setUnreadCount(0);
     } catch (error) {
@@ -137,7 +133,7 @@ export function NotificationBell() {
     const hours = Math.floor(diff / 3600000);
     const days = Math.floor(diff / 86400000);
 
-    if (minutes < 1) return 'À l\'instant';
+    if (minutes < 1) return "À l'instant";
     if (minutes < 60) return `Il y a ${minutes}m`;
     if (hours < 24) return `Il y a ${hours}h`;
     return `Il y a ${days}j`;
@@ -185,12 +181,12 @@ export function NotificationBell() {
           setIsOpen(!isOpen);
           if (!isOpen) fetchNotifications();
         }}
-        className="relative p-2 rounded-lg hover:bg-gray-700 transition-colors"
+        className="relative rounded-lg p-2 transition-colors hover:bg-gray-700"
         aria-label="Notifications"
       >
-        <Bell className="w-5 h-5 text-gray-300" />
+        <Bell className="h-5 w-5 text-gray-300" />
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] text-xs font-bold text-white bg-red-500 rounded-full px-1">
+          <span className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-xs font-bold text-white">
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
@@ -198,39 +194,36 @@ export function NotificationBell() {
 
       {/* Dropdown panel */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 md:w-96 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 max-h-[70vh] overflow-hidden flex flex-col">
+        <div className="absolute right-0 z-50 mt-2 flex max-h-[70vh] w-80 flex-col overflow-hidden rounded-lg border border-gray-700 bg-gray-800 shadow-xl md:w-96">
           {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b border-gray-700">
+          <div className="flex items-center justify-between border-b border-gray-700 p-4">
             <h3 className="font-semibold text-white">Notifications</h3>
             <div className="flex items-center gap-2">
               {unreadCount > 0 && (
                 <button
                   onClick={markAllAsRead}
-                  className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                  className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300"
                 >
-                  <CheckCheck className="w-4 h-4" />
+                  <CheckCheck className="h-4 w-4" />
                   Tout marquer lu
                 </button>
               )}
-              <button
-                onClick={() => setIsOpen(false)}
-                className="p-1 hover:bg-gray-700 rounded"
-              >
-                <X className="w-4 h-4 text-gray-400" />
+              <button onClick={() => setIsOpen(false)} className="rounded p-1 hover:bg-gray-700">
+                <X className="h-4 w-4 text-gray-400" />
               </button>
             </div>
           </div>
 
           {/* Notification list */}
-          <div className="overflow-y-auto flex-1">
+          <div className="flex-1 overflow-y-auto">
             {isLoading ? (
               <div className="p-8 text-center text-gray-400">
-                <div className="animate-spin w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-2" />
+                <div className="mx-auto mb-2 h-6 w-6 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
                 Chargement...
               </div>
             ) : notifications.length === 0 ? (
               <div className="p-8 text-center text-gray-400">
-                <Bell className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                <Bell className="mx-auto mb-2 h-12 w-12 opacity-50" />
                 <p>Aucune notification</p>
               </div>
             ) : (
@@ -238,32 +231,30 @@ export function NotificationBell() {
                 {notifications.map(notification => (
                   <li
                     key={notification.id}
-                    className={`p-4 hover:bg-gray-750 transition-colors border-l-4 ${getPriorityColor(notification.priority)} ${
+                    className={`hover:bg-gray-750 border-l-4 p-4 transition-colors ${getPriorityColor(notification.priority)} ${
                       !notification.read ? 'bg-gray-750' : ''
                     }`}
                   >
                     <div className="flex items-start gap-3">
-                      <span className="text-xl flex-shrink-0">
+                      <span className="flex-shrink-0 text-xl">
                         {getNotificationIcon(notification.type)}
                       </span>
-                      <div className="flex-1 min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
-                          <h4 className="font-medium text-white truncate">
-                            {notification.title}
-                          </h4>
-                          <span className="text-xs text-gray-500 flex-shrink-0">
+                          <h4 className="truncate font-medium text-white">{notification.title}</h4>
+                          <span className="flex-shrink-0 text-xs text-gray-500">
                             {formatTime(notification.createdAt)}
                           </span>
                         </div>
-                        <p className="text-sm text-gray-400 mt-1 line-clamp-2">
+                        <p className="mt-1 line-clamp-2 text-sm text-gray-400">
                           {notification.message}
                         </p>
                         {!notification.read && (
                           <button
                             onClick={() => markAsRead(notification.id)}
-                            className="mt-2 text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                            className="mt-2 flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300"
                           >
-                            <Check className="w-3 h-3" />
+                            <Check className="h-3 w-3" />
                             Marquer comme lu
                           </button>
                         )}
@@ -277,11 +268,8 @@ export function NotificationBell() {
 
           {/* Footer */}
           {notifications.length > 0 && (
-            <div className="p-3 border-t border-gray-700 text-center">
-              <a
-                href="/notifications"
-                className="text-sm text-blue-400 hover:text-blue-300"
-              >
+            <div className="border-t border-gray-700 p-3 text-center">
+              <a href="/notifications" className="text-sm text-blue-400 hover:text-blue-300">
                 Voir toutes les notifications
               </a>
             </div>
