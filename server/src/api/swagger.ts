@@ -5,10 +5,11 @@
  */
 
 import { Router, Request, Response } from 'express';
+import type { Router as ExpressRouter } from 'express';
 import swaggerUi from 'swagger-ui-express';
-import { openApiSpec } from './openapi';
+import { openApiSpec } from './openapi.js';
 
-const router = Router();
+const router: ExpressRouter = Router();
 
 // Swagger UI options
 const swaggerUiOptions: swaggerUi.SwaggerUiOptions = {

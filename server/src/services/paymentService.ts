@@ -294,10 +294,9 @@ export class PaymentService {
           inputMint: new PublicKey(request.tokenFrom),
           usdcMint: new PublicKey(this.usdcMint),
           jupiterProgram: new PublicKey('JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4'),
-          maxInputAmount: BigInt(jupiterQuote.inAmount),
-          exactUsdcOutput: BigInt(request.amountUsdc),
-          memo: request.memo || '',
-          routeData: routeBuffer,
+          amountIn: BigInt(jupiterQuote.inAmount),
+          exactUsdcOut: BigInt(request.amountUsdc),
+          memo: request.memo || null,
           jupiterAccounts: [], // Will be populated from Jupiter transaction
         });
 

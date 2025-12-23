@@ -143,13 +143,17 @@ export class EmailChannel {
    * Get template name for notification type
    */
   private getTemplateForType(type: NotificationType): EmailTemplate {
-    const templateMap: Record<NotificationType, EmailTemplate> = {
+    const templateMap: Partial<Record<NotificationType, EmailTemplate>> = {
       [NotificationType.DCA_EXECUTED]: 'dca_executed',
+      [NotificationType.DCA_COMPLETED]: 'dca_executed',
+      [NotificationType.DCA_FAILED]: 'swap_failed',
       [NotificationType.STOP_LOSS_TRIGGERED]: 'stop_loss_triggered',
+      [NotificationType.STOP_LOSS_EXECUTED]: 'stop_loss_triggered',
+      [NotificationType.STOP_LOSS_FAILED]: 'swap_failed',
       [NotificationType.SWAP_SUCCESS]: 'swap_success',
       [NotificationType.SWAP_FAILED]: 'swap_failed',
-      [NotificationType.INTENT_COMPLETED]: 'intent_completed',
-      [NotificationType.SYSTEM]: 'generic',
+      [NotificationType.PRICE_ALERT]: 'generic',
+      [NotificationType.SYSTEM_ALERT]: 'generic',
     };
 
     return templateMap[type] || 'generic';

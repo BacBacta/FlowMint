@@ -401,4 +401,42 @@ export class NotificationService {
   async getUnreadCount(userPublicKey: string): Promise<number> {
     return this.db.getUnreadNotificationCount(userPublicKey);
   }
+
+  // ==================== Static Methods for Backward Compatibility ====================
+  private static instance: NotificationService | null = null;
+
+  /**
+   * Set the singleton instance
+   */
+  static setInstance(service: NotificationService): void {
+    NotificationService.instance = service;
+  }
+
+  /**
+   * Get singleton instance (throws if not initialized)
+   */
+  static getInstance(): NotificationService {
+    if (!NotificationService.instance) {
+      throw new Error('NotificationService not initialized');
+    }
+    return NotificationService.instance;
+  }
+
+  /**
+   * Static notify helper - logs if service not initialized
+   */
+  static async notifyStatic(
+    userPublicKey: string,
+    type: NotificationType,
+    title: string,
+    message: string,
+    data?: Record<string, any>,
+    priority: NotificationPriority = NotificationPriority.MEDIUM
+  ): Promise<void> {
+    if (!NotificationService.instance) {
+      logger.warn({ type, title }, 'NotificationService not initialized, skipping notification');
+      return;
+    }
+    await NotificationService.instance.notify(userPublicKey, type, title, message, data, priority);
+  }
 }

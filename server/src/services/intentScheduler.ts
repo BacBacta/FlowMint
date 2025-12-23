@@ -14,6 +14,22 @@ import { DatabaseService } from '../db/database.js';
 import { ExecutionEngine } from './executionEngine.js';
 import { NotificationService, NotificationType, NotificationPriority } from './notificationService.js';
 
+// Helper to safely notify (logs warning if service not initialized)
+async function safeNotify(
+  userPublicKey: string,
+  type: NotificationType,
+  title: string,
+  message: string,
+  data?: Record<string, any>,
+  priority: NotificationPriority = NotificationPriority.MEDIUM
+): Promise<void> {
+  try {
+    await NotificationService.notifyStatic(userPublicKey, type, title, message, data, priority);
+  } catch (err) {
+    logger.warn({ err, type, title }, 'Failed to send notification');
+  }
+}
+
 /**
  * Intent types
  */
@@ -312,22 +328,23 @@ export class IntentScheduler {
         );
         // Don't fail the whole intent, just skip this slice
         // Notify user of failure
-        await NotificationService.notifyDCAExecuted(
+        await safeNotify(
           intent.userPublicKey,
-          intent.id,
-          intent.executionCount + 1,
-          amountToSwap,
-          false,
-          result.error
+          NotificationType.DCA_FAILED,
+          'DCA Execution Failed',
+          `DCA slice #${intent.executionCount + 1} failed: ${result.error}`,
+          { intentId: intent.id, error: result.error },
+          NotificationPriority.HIGH
         );
       } else {
         // Notify user of successful DCA execution
-        await NotificationService.notifyDCAExecuted(
+        await safeNotify(
           intent.userPublicKey,
-          intent.id,
-          intent.executionCount + 1,
-          amountToSwap,
-          true
+          NotificationType.DCA_EXECUTED,
+          'DCA Executed',
+          `DCA slice #${intent.executionCount + 1} completed: ${amountToSwap} swapped`,
+          { intentId: intent.id, amountSwapped: amountToSwap },
+          NotificationPriority.LOW
         );
       }
 
@@ -341,14 +358,14 @@ export class IntentScheduler {
         this.log.info({ intentId: intent.id }, 'DCA intent completed');
         
         // Notify user of DCA completion
-        await NotificationService.notify({
-          userId: intent.userPublicKey,
-          type: NotificationType.INTENT_COMPLETED,
-          title: 'DCA terminé',
-          message: `Votre plan DCA a été complété avec succès après ${intent.executionCount + 1} exécutions.`,
-          priority: NotificationPriority.NORMAL,
-          metadata: { intentId: intent.id, intentType: 'DCA' },
-        });
+        await safeNotify(
+          intent.userPublicKey,
+          NotificationType.DCA_COMPLETED,
+          'DCA Completed',
+          `Your DCA plan completed successfully after ${intent.executionCount + 1} executions.`,
+          { intentId: intent.id, intentType: 'DCA' },
+          NotificationPriority.MEDIUM
+        );
       } else {
         // Schedule next execution
         const nextExecution = now + (intent.intervalSeconds || 0) * 1000;
@@ -451,25 +468,26 @@ export class IntentScheduler {
         await this.db.updateIntentStatus(intent.id, IntentStatus.FAILED);
         
         // Notify user of stop-loss failure
-        await NotificationService.notifyStopLossTriggered(
+        await safeNotify(
           intent.userPublicKey,
-          intent.id,
-          intent.priceThreshold || 0,
-          currentPrice,
-          false,
-          result.error
+          NotificationType.STOP_LOSS_FAILED,
+          'Stop-Loss Failed',
+          `Stop-loss execution failed: ${result.error}`,
+          { intentId: intent.id, triggerPrice: intent.priceThreshold, currentPrice, error: result.error },
+          NotificationPriority.URGENT
         );
       } else {
         await this.db.updateIntentStatus(intent.id, IntentStatus.COMPLETED);
         this.log.info({ intentId: intent.id }, 'Stop-loss executed successfully');
         
         // Notify user of successful stop-loss execution
-        await NotificationService.notifyStopLossTriggered(
+        await safeNotify(
           intent.userPublicKey,
-          intent.id,
-          intent.priceThreshold || 0,
-          currentPrice,
-          true
+          NotificationType.STOP_LOSS_EXECUTED,
+          'Stop-Loss Executed',
+          `Stop-loss executed successfully at price ${currentPrice}`,
+          { intentId: intent.id, triggerPrice: intent.priceThreshold, currentPrice },
+          NotificationPriority.HIGH
         );
       }
     } catch (error) {
@@ -477,13 +495,13 @@ export class IntentScheduler {
       await this.db.updateIntentStatus(intent.id, IntentStatus.FAILED);
       
       // Notify user of stop-loss error
-      await NotificationService.notifyStopLossTriggered(
+      await safeNotify(
         intent.userPublicKey,
-        intent.id,
-        intent.priceThreshold || 0,
-        currentPrice,
-        false,
-        error instanceof Error ? error.message : 'Unknown error'
+        NotificationType.STOP_LOSS_FAILED,
+        'Stop-Loss Error',
+        `Stop-loss error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        { intentId: intent.id, triggerPrice: intent.priceThreshold, currentPrice },
+        NotificationPriority.URGENT
       );
     }
   }

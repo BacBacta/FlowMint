@@ -18,8 +18,8 @@ import {
   authRateLimit,
   AuthenticatedRequest,
   requireAuth,
-} from '../middleware/auth.js';
-import { logger } from '../utils/logger.js';
+} from '../../middleware/auth.js';
+import { logger } from '../../utils/logger.js';
 
 const log = logger.child({ service: 'AuthRoutes' });
 
