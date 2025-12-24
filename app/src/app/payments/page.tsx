@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
@@ -37,7 +37,7 @@ function base64ToUint8Array(base64: string): Uint8Array {
   return bytes;
 }
 
-export default function PaymentsPage() {
+function PaymentsContent() {
   const searchParams = useSearchParams();
   const { connection } = useConnection();
   const { publicKey, connected, sendTransaction } = useWallet();
@@ -478,5 +478,16 @@ export default function PaymentsPage() {
 
       <Footer />
     </div>
+  );
+}
+export default function PaymentsPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 flex items-center justify-center">
+        <div className="text-white">Loading...</div>
+      </div>
+    }>
+      <PaymentsContent />
+    </Suspense>
   );
 }
