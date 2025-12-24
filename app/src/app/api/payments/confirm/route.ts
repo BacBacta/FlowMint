@@ -1,12 +1,14 @@
 /**
- * Payment Details API Route
+ * Payment Confirm API Route
+ *
+ * Proxies to the backend /api/v1/payments/confirm.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
@@ -14,10 +16,7 @@ export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders });
 }
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { paymentId: string } }
-) {
+export async function POST(request: NextRequest) {
   const backend = process.env.NEXT_PUBLIC_API_URL;
   if (!backend) {
     return NextResponse.json(
@@ -26,9 +25,18 @@ export async function GET(
     );
   }
 
-  const resp = await fetch(`${backend}/api/v1/payments/${encodeURIComponent(params.paymentId)}`, {
-    method: 'GET',
-    headers: { Accept: 'application/json' },
+  const body = await request.json().catch(() => null);
+  if (!body) {
+    return NextResponse.json(
+      { success: false, error: 'Invalid JSON body' },
+      { status: 400, headers: corsHeaders }
+    );
+  }
+
+  const resp = await fetch(`${backend}/api/v1/payments/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   });
 
   const payload = await resp.json().catch(() => ({ success: false, error: 'Bad response' }));

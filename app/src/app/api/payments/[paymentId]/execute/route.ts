@@ -18,11 +18,31 @@ export async function POST(
   request: NextRequest,
   { params }: { params: { paymentId: string } }
 ) {
-  return NextResponse.json(
+  const backend = process.env.NEXT_PUBLIC_API_URL;
+  if (!backend) {
+    return NextResponse.json(
+      { success: false, error: 'Missing NEXT_PUBLIC_API_URL' },
+      { status: 503, headers: corsHeaders }
+    );
+  }
+
+  const body = await request.json().catch(() => null);
+  if (!body) {
+    return NextResponse.json(
+      { success: false, error: 'Invalid JSON body' },
+      { status: 400, headers: corsHeaders }
+    );
+  }
+
+  const resp = await fetch(
+    `${backend}/api/v1/payments/${encodeURIComponent(params.paymentId)}/execute`,
     {
-      success: false,
-      error: 'Payment execution requires the FlowMint backend server.',
-    },
-    { status: 503, headers: corsHeaders }
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }
   );
+
+  const payload = await resp.json().catch(() => ({ success: false, error: 'Bad response' }));
+  return NextResponse.json(payload, { status: resp.status, headers: corsHeaders });
 }

@@ -297,6 +297,17 @@ export class ExecutionEngine {
       // Step 2: Get quote with intelligent retry
       const quote = await this.getQuoteWithIntelligentRetry(request, retryStrategy, retryState);
 
+      // Log quote obtained
+      await this.receiptService.logEvent(receiptId, 'quote', {
+        slippageBps: request.slippageBps,
+        metadata: {
+          inAmount: quote.inAmount,
+          outAmount: quote.outAmount,
+          priceImpactPct: quote.priceImpactPct,
+          routeSteps: quote.routePlan.length,
+        },
+      });
+
       // Step 3: Comprehensive risk assessment using RiskScoringService
       const riskAssessment = await this.riskScoring.scoreSwap(
         {
@@ -317,6 +328,11 @@ export class ExecutionEngine {
         // Record risk blocked metric
         this.metrics.recordRiskBlocked('swap', 'RED', 'protected_mode');
         metricsTimer.end('failed', 'RISK_BLOCKED');
+
+        await this.receiptService.logEvent(receiptId, 'failure', {
+          errorCode: 'RISK_BLOCKED',
+          errorMessage: `Blocked by risk policy: ${reasons}`,
+        });
 
         return this.createFailedResult(
           receiptId,
@@ -347,6 +363,12 @@ export class ExecutionEngine {
         wrapAndUnwrapSol: true,
         prioritizationFeeLamports: feeEstimate.priorityFee,
         computeUnitPriceMicroLamports: feeEstimate.priorityFee,
+      });
+
+      // Log transaction build
+      await this.receiptService.logEvent(receiptId, 'tx_build', {
+        priorityFee: feeEstimate.priorityFee,
+        metadata: { lastValidBlockHeight: swap.lastValidBlockHeight },
       });
 
       let finalTransaction = swap.swapTransaction;
@@ -395,6 +417,11 @@ export class ExecutionEngine {
           { receiptPda, routeDataLen: routeBuffer.length },
           'FlowMint instruction injected'
         );
+
+        // Log FlowMint injection
+        await this.receiptService.logEvent(receiptId, 'flowmint_inject', {
+          metadata: { receiptPda, routeDataLen: routeBuffer.length },
+        });
       }
 
       // Step 6: Create enhanced receipt with production service
@@ -490,6 +517,13 @@ export class ExecutionEngine {
       // Record failure metrics
       metricsTimer.end('failed', classifiedError.code);
 
+      // Log failure event
+      await this.receiptService.logEvent(receiptId, 'failure', {
+        errorCode: classifiedError.code,
+        errorMessage: message,
+        metadata: { attempts: retryMetrics.totalAttempts },
+      });
+
       this.log.error(
         {
           receiptId,
@@ -564,6 +598,14 @@ export class ExecutionEngine {
         if (classifiedError.requiresRequote) {
           state.requotes++;
           this.metrics.recordRequote('swap');
+
+          // Log requote event
+          await this.receiptService.logEvent('', 'requote', {
+            slippageBps: request.slippageBps,
+            errorCode: classifiedError.code,
+            errorMessage: classifiedError.message,
+          });
+
           // Increase slippage for requote if not in protected mode
           if (!request.protectedMode) {
             request.slippageBps = Math.min(
@@ -575,6 +617,13 @@ export class ExecutionEngine {
 
         // Record retry metric
         this.metrics.recordRetry('swap', classifiedError.code);
+
+        // Log retry event
+        await this.receiptService.logEvent('', 'retry', {
+          errorCode: classifiedError.code,
+          errorMessage: classifiedError.message,
+          metadata: { attempt: state.attempts, delayMs: retryDecision.delayMs },
+        });
 
         this.log.warn(
           {
@@ -614,6 +663,13 @@ export class ExecutionEngine {
       });
 
       if (result.confirmed) {
+        // Log tx_confirm event
+        await this.receiptService.logEvent(receiptId, 'tx_confirm', {
+          signature,
+          status: 'confirmed',
+          metadata: { slot: result.slot },
+        });
+
         // Transaction confirmed, update receipt with actual output
         const { comparison } = await this.confirmAndCompare(
           receiptId,
@@ -621,8 +677,21 @@ export class ExecutionEngine {
           userOutputAccount
         );
 
+        // Log success
+        await this.receiptService.logEvent(receiptId, 'success', {
+          signature,
+          metadata: comparison,
+        });
+
         return { confirmed: true, result, comparison };
       } else {
+        // Log failure
+        await this.receiptService.logEvent(receiptId, 'failure', {
+          signature,
+          status: 'failed',
+          errorMessage: result.error || 'Transaction not confirmed',
+        });
+
         // Transaction failed
         await this.updateReceiptStatus(
           receiptId,

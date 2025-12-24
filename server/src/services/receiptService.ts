@@ -11,7 +11,7 @@
 import { v4 as uuidv4 } from 'uuid';
 
 import { logger } from '../utils/logger.js';
-import { DatabaseService, ReceiptRecord } from '../db/database.js';
+import { DatabaseService, ReceiptRecord, ExecutionEventType } from '../db/database.js';
 import { RiskSignal, RiskReason } from './riskScoring.js';
 import { RetryMetrics } from './retryPolicy.js';
 
@@ -157,6 +157,42 @@ const executionState = new Map<
  */
 export class ReceiptService {
   constructor(private readonly db: DatabaseService) {}
+
+  /**
+   * Log an execution event to the persistent timeline
+   */
+  async logEvent(
+    receiptId: string,
+    eventType: ExecutionEventType,
+    details: {
+      rpcEndpoint?: string;
+      priorityFee?: number;
+      slippageBps?: number;
+      signature?: string;
+      status?: string;
+      errorCode?: string;
+      errorMessage?: string;
+      metadata?: Record<string, unknown>;
+    } = {}
+  ): Promise<void> {
+    try {
+      await this.db.saveExecutionEvent({
+        receiptId,
+        eventType,
+        timestamp: Date.now(),
+        ...details,
+      });
+    } catch (err) {
+      log.warn({ receiptId, eventType, err }, 'Failed to log execution event');
+    }
+  }
+
+  /**
+   * Get the timeline of execution events for a receipt
+   */
+  async getTimeline(receiptId: string) {
+    return this.db.getExecutionEvents(receiptId);
+  }
 
   /**
    * Create a pending receipt

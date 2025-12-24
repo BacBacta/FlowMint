@@ -1,0 +1,29 @@
+# Prometheus Configuration for FlowMint
+# Deploy this with your Prometheus instance
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+rule_files: []
+
+scrape_configs:
+  # FlowMint Server metrics
+  - job_name: 'flowmint-server'
+    static_configs:
+      - targets: ['flowmint-server.fly.dev:443']
+    scheme: https
+    metrics_path: /metrics
+    # If authentication is required:
+    # bearer_token: 'your-token'
+
+  # Local development
+  - job_name: 'flowmint-local'
+    static_configs:
+      - targets: ['localhost:3001']
+    metrics_path: /metrics

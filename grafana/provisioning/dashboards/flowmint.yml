@@ -1,0 +1,15 @@
+# Grafana Provisioning - Dashboards
+# Place this in /etc/grafana/provisioning/dashboards/
+
+apiVersion: 1
+
+providers:
+  - name: FlowMint
+    orgId: 1
+    folder: FlowMint
+    folderUid: flowmint
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards/flowmint

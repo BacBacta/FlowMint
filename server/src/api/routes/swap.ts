@@ -245,6 +245,37 @@ export function createSwapRoutes(db: DatabaseService): Router {
   });
 
   /**
+   * GET /api/v1/swap/receipt/:id/timeline
+   *
+   * Get execution timeline for a swap receipt
+   */
+  router.get('/receipt/:id/timeline', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const receipt = await executionEngine.getReceipt(req.params.id);
+
+      if (!receipt) {
+        return res.status(404).json({
+          success: false,
+          error: 'Receipt not found',
+        });
+      }
+
+      const timeline = await db.getExecutionEvents(req.params.id);
+
+      res.json({
+        success: true,
+        data: {
+          receiptId: req.params.id,
+          events: timeline,
+          count: timeline.length,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  /**
    * GET /api/v1/swap/receipts/:userPublicKey
    *
    * Get user's swap receipts

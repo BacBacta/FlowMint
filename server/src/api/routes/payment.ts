@@ -4,8 +4,9 @@
 
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
+import { v4 as uuidv4 } from 'uuid';
 
-import { DatabaseService } from '../../db/database.js';
+import { DatabaseService, type PaymentLinkRecord } from '../../db/database.js';
 import { PaymentService } from '../../services/paymentService.js';
 import { logger } from '../../utils/logger.js';
 
@@ -29,11 +30,48 @@ const executePaymentSchema = z.object({
   memo: z.string().max(64).optional(),
 });
 
+const createPaymentLinkSchema = z.object({
+  merchantId: z.string().min(32).max(44),
+  orderId: z.string().min(1).max(64),
+  amountUsdc: z.union([z.number().positive(), z.string().min(1)]),
+});
+
+const executePaymentByIdSchema = z.object({
+  payerPublicKey: z.string().min(32).max(44),
+  payerMint: z.string().min(32).max(44),
+});
+
 const confirmPaymentSchema = z.object({
   paymentId: z.string().uuid(),
   txSignature: z.string().min(64).max(100),
   success: z.boolean(),
 });
+
+function toUsdcBaseUnits(amount: number | string): string {
+  const parsed = typeof amount === 'number' ? amount : Number(amount);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error('Invalid amountUsdc');
+  }
+  const units = Math.round(parsed * 1_000_000);
+  if (!Number.isFinite(units) || units <= 0) {
+    throw new Error('Invalid amountUsdc');
+  }
+  return String(units);
+}
+
+function formatUsdc(baseUnits: string): string {
+  const value = BigInt(baseUnits);
+  const whole = value / 1_000_000n;
+  const frac = value % 1_000_000n;
+  const fracStr = frac.toString().padStart(6, '0').slice(0, 2);
+  return `${whole.toString()}.${fracStr}`;
+}
+
+function mapPaymentStatus(status: string): 'pending' | 'completed' | 'failed' {
+  if (status === 'success') return 'completed';
+  if (status === 'failed') return 'failed';
+  return 'pending';
+}
 
 /**
  * Create payment routes
@@ -41,6 +79,55 @@ const confirmPaymentSchema = z.object({
 export function createPaymentRoutes(db: DatabaseService): Router {
   const router = Router();
   const paymentService = new PaymentService(db);
+
+  /**
+   * POST /api/v1/payments/create-link
+   *
+   * Create an invoice-style payment link.
+   */
+  router.post('/create-link', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const body = createPaymentLinkSchema.parse(req.body);
+      const now = Date.now();
+      const amountUsdc = toUsdcBaseUnits(body.amountUsdc);
+
+      const paymentId = uuidv4();
+      const expiresAt = now + 30 * 60 * 1000; // 30 minutes
+
+      const record: PaymentLinkRecord = {
+        paymentId,
+        merchantId: body.merchantId,
+        orderId: body.orderId,
+        amountUsdc,
+        status: 'pending',
+        expiresAt,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      await db.savePaymentLink(record);
+
+      res.json({
+        success: true,
+        data: {
+          paymentId,
+          merchantId: body.merchantId,
+          orderId: body.orderId,
+          amountUsdc: formatUsdc(amountUsdc),
+          expiresAt,
+        },
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid request parameters',
+          details: error.errors,
+        });
+      }
+      next(error);
+    }
+  });
 
   /**
    * POST /api/v1/payments/quote
@@ -134,6 +221,65 @@ export function createPaymentRoutes(db: DatabaseService): Router {
   });
 
   /**
+   * POST /api/v1/payments/:paymentId/execute
+   *
+   * Execute a payment for a previously created invoice.
+   */
+  router.post('/:paymentId/execute', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const body = executePaymentByIdSchema.parse(req.body);
+      const paymentId = req.params.paymentId;
+
+      const link = await db.getPaymentLink(paymentId);
+      if (!link) {
+        return res.status(404).json({
+          success: false,
+          error: 'Payment not found',
+        });
+      }
+
+      if (Date.now() > link.expiresAt) {
+        await db.updatePaymentLinkStatus(paymentId, 'expired');
+        return res.status(410).json({
+          success: false,
+          error: 'Payment expired',
+        });
+      }
+
+      const result = await paymentService.executePayment({
+        paymentId,
+        payerPublicKey: body.payerPublicKey,
+        merchantPublicKey: link.merchantId,
+        amountUsdc: link.amountUsdc,
+        tokenFrom: body.payerMint,
+        memo: link.orderId,
+      });
+
+      if (result.status === 'failed') {
+        return res.status(400).json({
+          success: false,
+          error: result.error,
+          paymentId: result.paymentId,
+        });
+      }
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid request parameters',
+          details: error.errors,
+        });
+      }
+      next(error);
+    }
+  });
+
+  /**
    * POST /api/v1/payments/confirm
    *
    * Confirm payment transaction result
@@ -149,6 +295,11 @@ export function createPaymentRoutes(db: DatabaseService): Router {
         body.success ? 'success' : 'failed',
         body.txSignature
       );
+
+      const link = await db.getPaymentLink(body.paymentId);
+      if (link) {
+        await db.updatePaymentLinkStatus(body.paymentId, body.success ? 'completed' : 'failed');
+      }
 
       res.json({
         success: true,
@@ -170,31 +321,6 @@ export function createPaymentRoutes(db: DatabaseService): Router {
   });
 
   /**
-   * GET /api/v1/payments/:id
-   *
-   * Get a payment by ID
-   */
-  router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const payment = await paymentService.getPayment(req.params.id);
-
-      if (!payment) {
-        return res.status(404).json({
-          success: false,
-          error: 'Payment not found',
-        });
-      }
-
-      res.json({
-        success: true,
-        data: payment,
-      });
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  /**
    * GET /api/v1/payments/user/:publicKey
    *
    * Get user's payments
@@ -207,6 +333,69 @@ export function createPaymentRoutes(db: DatabaseService): Router {
         success: true,
         data: payments,
         count: payments.length,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  /**
+   * GET /api/v1/payments/:id
+   *
+   * Get a payment by ID
+   */
+  router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = req.params.id;
+      const [link, payment] = await Promise.all([
+        db.getPaymentLink(id),
+        paymentService.getPayment(id),
+      ]);
+
+      if (!link && !payment) {
+        return res.status(404).json({
+          success: false,
+          error: 'Payment not found',
+        });
+      }
+
+      if (link) {
+        const now = Date.now();
+        let status: 'pending' | 'completed' | 'failed' | 'expired' = 'pending';
+        if (payment?.status) {
+          status = mapPaymentStatus(payment.status);
+        } else if (link.status === 'completed' || link.status === 'failed' || link.status === 'expired') {
+          status = link.status;
+        }
+
+        if (status === 'pending' && now > link.expiresAt) {
+          status = 'expired';
+        }
+
+        return res.json({
+          success: true,
+          data: {
+            paymentId: link.paymentId,
+            merchantId: link.merchantId,
+            orderId: link.orderId,
+            amountUsdc: formatUsdc(link.amountUsdc),
+            status,
+            expiresAt: link.expiresAt,
+            txSignature: payment?.txSignature,
+          },
+        });
+      }
+
+      // Fallback: payment exists without a link
+      res.json({
+        success: true,
+        data: {
+          paymentId: payment!.paymentId,
+          merchantId: payment!.merchantPublicKey,
+          amountUsdc: formatUsdc(payment!.usdcAmount),
+          status: mapPaymentStatus(payment!.status),
+          txSignature: payment!.txSignature,
+        },
       });
     } catch (error) {
       next(error);

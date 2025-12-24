@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { ExecutionTimeline } from './ExecutionTimeline';
 
 interface ReceiptData {
   receiptId: string;
@@ -55,6 +56,7 @@ function formatAmount(amount: string, decimals: number = 9): string {
 
 export function ReceiptModal({ isOpen, onClose, receipt }: ReceiptModalProps) {
   const [copied, setCopied] = useState(false);
+  const [showTimeline, setShowTimeline] = useState(false);
 
   if (!isOpen || !receipt) return null;
 
@@ -195,14 +197,29 @@ export function ReceiptModal({ isOpen, onClose, receipt }: ReceiptModalProps) {
           </div>
         </div>
 
-        {/* Close Button */}
-        <button
-          onClick={onClose}
-          className="mt-4 w-full rounded-lg bg-gray-900 py-2.5 text-white hover:bg-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600"
-        >
-          Close
-        </button>
+        {/* Action Buttons */}
+        <div className="mt-4 flex gap-2">
+          <button
+            onClick={() => setShowTimeline(true)}
+            className="flex-1 rounded-lg border border-gray-300 bg-white py-2.5 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+          >
+            📋 Timeline
+          </button>
+          <button
+            onClick={onClose}
+            className="flex-1 rounded-lg bg-gray-900 py-2.5 text-white hover:bg-gray-800 dark:bg-gray-600 dark:hover:bg-gray-500"
+          >
+            Close
+          </button>
+        </div>
       </div>
+
+      {/* Execution Timeline Modal */}
+      <ExecutionTimeline
+        receiptId={receipt.receiptId}
+        isOpen={showTimeline}
+        onClose={() => setShowTimeline(false)}
+      />
     </div>
   );
 }

@@ -1,14 +1,47 @@
 'use client';
 
-import { useState } from 'react';
-import { useWallet } from '@solana/wallet-adapter-react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
+import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'next/navigation';
+import { VersionedTransaction } from '@solana/web3.js';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
-import { apiClient } from '@/lib/api';
+
+const WSOL_MINT = 'So11111111111111111111111111111111111111112';
+
+type PaymentLinkResponse = {
+  success: boolean;
+  paymentId: string;
+  paymentUrl: string;
+  qrCode: string;
+  expiresAt: string;
+};
+
+type PaymentStatus = {
+  paymentId: string;
+  merchantId: string;
+  orderId?: string;
+  amountUsdc: string;
+  status: 'pending' | 'completed' | 'expired' | 'failed';
+  expiresAt?: number;
+  txSignature?: string;
+};
+
+function base64ToUint8Array(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
 
 export default function PaymentsPage() {
-  const { publicKey: _publicKey, connected } = useWallet();
+  const searchParams = useSearchParams();
+  const { connection } = useConnection();
+  const { publicKey, connected, sendTransaction } = useWallet();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'create' | 'pay'>('create');
 
   // Merchant form state
@@ -20,14 +53,35 @@ export default function PaymentsPage() {
   const [paymentId, setPaymentId] = useState('');
   const [paymentLink, setPaymentLink] = useState<any>(null);
 
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    const pid = searchParams.get('paymentId');
+    if (tab === 'pay') setActiveTab('pay');
+    if (pid) {
+      setPaymentId(pid);
+      setActiveTab('pay');
+    }
+  }, [searchParams]);
+
+  const createLinkPayload = useMemo(
+    () => ({ merchantId, orderId, amountUsdc: parseFloat(amountUsdc) }),
+    [merchantId, orderId, amountUsdc]
+  );
+
   // Create payment link mutation
   const createPaymentLink = useMutation({
     mutationFn: async () => {
-      return apiClient.createPaymentLink({
-        merchantId,
-        orderId,
-        amountUsdc: parseFloat(amountUsdc),
+      const resp = await fetch('/api/payments/create-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(createLinkPayload),
       });
+      const data = (await resp.json()) as PaymentLinkResponse | { success: false; error?: string };
+      if (!resp.ok || !('success' in data) || data.success === false) {
+        const message = (data as any)?.error || `HTTP ${resp.status}`;
+        throw new Error(message);
+      }
+      return data;
     },
     onSuccess: data => {
       setPaymentLink(data);
@@ -39,9 +93,76 @@ export default function PaymentsPage() {
     queryKey: ['paymentStatus', paymentId],
     queryFn: async () => {
       if (!paymentId) return null;
-      return apiClient.getPaymentStatus(paymentId);
+      const resp = await fetch(`/api/payments/${encodeURIComponent(paymentId)}`);
+      if (resp.status === 404) return null;
+      const payload = (await resp.json()) as any;
+      if (!resp.ok || payload?.success === false) {
+        throw new Error(payload?.error || `HTTP ${resp.status}`);
+      }
+      return (payload.data || null) as PaymentStatus | null;
     },
     enabled: !!paymentId && activeTab === 'pay',
+  });
+
+  const payMutation = useMutation({
+    mutationFn: async () => {
+      if (!publicKey || !sendTransaction) {
+        throw new Error('Wallet not connected');
+      }
+      if (!paymentId) {
+        throw new Error('Missing paymentId');
+      }
+
+      const execResp = await fetch(`/api/payments/${encodeURIComponent(paymentId)}/execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          payerPublicKey: publicKey.toBase58(),
+          payerMint: WSOL_MINT,
+        }),
+      });
+
+      const execPayload = (await execResp.json()) as any;
+      if (!execResp.ok || execPayload?.success === false) {
+        throw new Error(execPayload?.error || `HTTP ${execResp.status}`);
+      }
+
+      const txBase64 = execPayload?.data?.transaction as string | undefined;
+      const lastValidBlockHeight = execPayload?.data?.lastValidBlockHeight as number | undefined;
+      if (!txBase64) {
+        throw new Error('Missing transaction');
+      }
+
+      const txBytes = base64ToUint8Array(txBase64);
+      const tx = VersionedTransaction.deserialize(txBytes);
+      const signature = await sendTransaction(tx, connection);
+
+      // Confirm on-chain (best effort)
+      try {
+        const blockhash = (tx.message as any).recentBlockhash as string | undefined;
+        if (blockhash && typeof lastValidBlockHeight === 'number') {
+          await connection.confirmTransaction(
+            { signature, blockhash, lastValidBlockHeight },
+            'confirmed'
+          );
+        } else {
+          await connection.confirmTransaction(signature, 'confirmed');
+        }
+      } catch {
+        // Even if confirm fails client-side, still attempt to report signature.
+      }
+
+      await fetch('/api/payments/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentId, txSignature: signature, success: true }),
+      });
+
+      return signature;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['paymentStatus', paymentId] });
+    },
   });
 
   return (
@@ -328,15 +449,26 @@ export default function PaymentsPage() {
 
                   {/* Pay Button */}
                   <button
-                    disabled={!paymentStatus || paymentStatus?.status !== 'pending'}
+                    onClick={() => payMutation.mutate()}
+                    disabled={
+                      !paymentStatus ||
+                      paymentStatus?.status !== 'pending' ||
+                      payMutation.isPending
+                    }
                     className="btn-primary w-full py-3"
                   >
                     {paymentStatus?.status === 'completed'
                       ? 'Already Paid'
                       : paymentStatus?.status === 'expired'
                         ? 'Payment Expired'
+                        : payMutation.isPending
+                          ? 'Paying...'
                         : `Pay $${paymentStatus?.amountUsdc || '0'} USDC`}
                   </button>
+
+                  {payMutation.isError && (
+                    <div className="text-sm text-red-500">{(payMutation.error as Error).message}</div>
+                  )}
                 </div>
               )}
             </div>

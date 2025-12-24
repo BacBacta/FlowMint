@@ -21,6 +21,10 @@ import { createHealthRoutes } from './api/routes/health.js';
 import { createNotificationRoutes } from './api/routes/notifications.js';
 import { createAnalyticsRoutes } from './api/routes/analytics.js';
 import { createAuthRoutes } from './api/routes/auth.js';
+import { createDelegationRoutes } from './api/routes/delegation.js';
+import { createJupiterOrdersRoutes } from './api/routes/jupiterOrders.js';
+import { createMEVRoutes } from './api/routes/mev.js';
+import { createAdvancedOrdersRoutes } from './api/routes/advancedOrders.js';
 import metricsRouter from './api/routes/metrics.js';
 import swaggerRouter from './api/swagger.js';
 
@@ -84,6 +88,10 @@ export function createApp(db: DatabaseService): Express {
   apiRouter.use('/intents', createIntentRoutes(db));
   apiRouter.use('/notifications', createNotificationRoutes(db));
   apiRouter.use('/analytics', createAnalyticsRoutes(db));
+  apiRouter.use('/delegation', createDelegationRoutes(db));
+  apiRouter.use('/jupiter', createJupiterOrdersRoutes());
+  apiRouter.use('/mev', createMEVRoutes(db));
+  apiRouter.use('/orders/advanced', createAdvancedOrdersRoutes());
 
   app.use('/api/v1', apiRouter);
 

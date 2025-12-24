@@ -13,6 +13,63 @@ import { logger } from '../utils/logger.js';
 import { Intent, IntentType, IntentStatus } from '../services/intentScheduler.js';
 import { PaymentRecord } from '../services/paymentService.js';
 
+export interface PaymentLinkRecord {
+  paymentId: string;
+  merchantId: string;
+  orderId: string;
+  amountUsdc: string; // smallest unit (6 decimals)
+  status: 'pending' | 'completed' | 'expired' | 'failed';
+  expiresAt: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type ExecutionEventType =
+  | 'quote'
+  | 'requote'
+  | 'flowmint_inject'
+  | 'tx_build'
+  | 'tx_send'
+  | 'tx_confirm'
+  | 'retry'
+  | 'success'
+  | 'failure'
+  | 'mev_submit';
+
+export interface ExecutionEventRecord {
+  id?: number;
+  receiptId: string;
+  eventType: ExecutionEventType;
+  timestamp: number;
+  rpcEndpoint?: string;
+  priorityFee?: number;
+  slippageBps?: number;
+  signature?: string;
+  status?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  metadata?: Record<string, unknown>;
+  createdAt: number;
+}
+
+/**
+ * Token delegation record for non-custodial DCA
+ */
+export interface DelegationRecord {
+  id: string;
+  userPublicKey: string;
+  tokenMint: string;
+  tokenAccount: string;
+  delegatePublicKey: string;
+  approvedAmount: string;
+  remainingAmount: string;
+  status: 'pending' | 'active' | 'revoked' | 'exhausted';
+  intentId?: string;
+  approvalSignature?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 /**
  * Receipt record
  */
@@ -162,6 +219,24 @@ export class DatabaseService {
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_payments_merchant ON payments(merchant_public_key)`);
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status)`);
 
+    // Payment links (invoices) table
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS payment_links (
+        payment_id TEXT PRIMARY KEY,
+        merchant_id TEXT NOT NULL,
+        order_id TEXT NOT NULL,
+        amount_usdc TEXT NOT NULL,
+        status TEXT NOT NULL,
+        expires_at INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_payment_links_merchant ON payment_links(merchant_id)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_payment_links_status ON payment_links(status)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_payment_links_expires ON payment_links(expires_at)`);
+
     // Notifications table
     this.db.run(`
       CREATE TABLE IF NOT EXISTS notifications (
@@ -234,6 +309,51 @@ export class DatabaseService {
     `);
 
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_execution_metrics_created ON execution_metrics(created_at DESC)`);
+
+    // Execution events table (timeline for receipts)
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS execution_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        receipt_id TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        rpc_endpoint TEXT,
+        priority_fee INTEGER,
+        slippage_bps INTEGER,
+        signature TEXT,
+        status TEXT,
+        error_code TEXT,
+        error_message TEXT,
+        metadata TEXT,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (receipt_id) REFERENCES receipts(receipt_id)
+      )
+    `);
+
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_execution_events_receipt ON execution_events(receipt_id)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_execution_events_timestamp ON execution_events(timestamp)`);
+
+    // Token delegations table (for non-custodial DCA)
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS token_delegations (
+        id TEXT PRIMARY KEY,
+        user_public_key TEXT NOT NULL,
+        token_mint TEXT NOT NULL,
+        token_account TEXT NOT NULL,
+        delegate_public_key TEXT NOT NULL,
+        approved_amount TEXT NOT NULL,
+        remaining_amount TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        intent_id TEXT,
+        approval_signature TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_delegations_user ON token_delegations(user_public_key)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_delegations_status ON token_delegations(status)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_delegations_intent ON token_delegations(intent_id)`);
 
     this.log.debug('Database tables created');
   }
@@ -637,6 +757,72 @@ export class DatabaseService {
       txSignature: row.tx_signature,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+    };
+  }
+
+  // ==================== Payment Link Methods ====================
+
+  async savePaymentLink(link: PaymentLinkRecord): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    this.db.run(
+      `INSERT INTO payment_links (
+        payment_id, merchant_id, order_id, amount_usdc,
+        status, expires_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        link.paymentId,
+        link.merchantId,
+        link.orderId,
+        link.amountUsdc,
+        link.status,
+        link.expiresAt,
+        link.createdAt,
+        link.updatedAt,
+      ]
+    );
+
+    this.saveToFile();
+  }
+
+  async updatePaymentLinkStatus(
+    paymentId: string,
+    status: PaymentLinkRecord['status']
+  ): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    this.db.run(
+      `UPDATE payment_links SET status = ?, updated_at = ? WHERE payment_id = ?`,
+      [status, Date.now(), paymentId]
+    );
+
+    this.saveToFile();
+  }
+
+  async getPaymentLink(paymentId: string): Promise<PaymentLinkRecord | null> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = this.db.exec('SELECT * FROM payment_links WHERE payment_id = ?', [paymentId]);
+    if (result.length === 0 || result[0].values.length === 0) return null;
+
+    return this.mapPaymentLinkRow(result[0].columns, result[0].values[0]);
+  }
+
+  private mapPaymentLinkRow(columns: string[], values: any[]): PaymentLinkRecord {
+    const row: Record<string, any> = {};
+    columns.forEach((col, idx) => {
+      row[col] = values[idx];
+    });
+
+    return {
+      paymentId: row.payment_id,
+      merchantId: row.merchant_id,
+      orderId: row.order_id,
+      amountUsdc: row.amount_usdc,
+      status: row.status,
+      expiresAt: Number(row.expires_at),
+      createdAt: Number(row.created_at),
+      updatedAt: Number(row.updated_at),
     };
   }
 
@@ -1229,5 +1415,220 @@ export class DatabaseService {
       createdAt: row.created_at,
     };
   }
-}
 
+  // ==================== Execution Events (Timeline) Methods ====================
+
+  /**
+   * Save an execution event to the timeline
+   */
+  async saveExecutionEvent(event: Omit<ExecutionEventRecord, 'id' | 'createdAt'>): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const now = Date.now();
+    this.db.run(
+      `INSERT INTO execution_events (
+        receipt_id, event_type, timestamp, rpc_endpoint, priority_fee,
+        slippage_bps, signature, status, error_code, error_message,
+        metadata, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        event.receiptId,
+        event.eventType,
+        event.timestamp,
+        event.rpcEndpoint || null,
+        event.priorityFee || null,
+        event.slippageBps || null,
+        event.signature || null,
+        event.status || null,
+        event.errorCode || null,
+        event.errorMessage || null,
+        event.metadata ? JSON.stringify(event.metadata) : null,
+        now,
+      ]
+    );
+
+    this.saveToFile();
+  }
+
+  /**
+   * Get execution events for a receipt (timeline)
+   */
+  async getExecutionEvents(receiptId: string): Promise<ExecutionEventRecord[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = this.db.exec(
+      `SELECT * FROM execution_events WHERE receipt_id = ? ORDER BY timestamp ASC`,
+      [receiptId]
+    );
+
+    if (result.length === 0) return [];
+
+    return result[0].values.map((row) =>
+      this.mapExecutionEventRow(result[0].columns, row)
+    );
+  }
+
+  private mapExecutionEventRow(columns: string[], values: any[]): ExecutionEventRecord {
+    const row: Record<string, any> = {};
+    columns.forEach((col, idx) => {
+      row[col] = values[idx];
+    });
+
+    return {
+      id: row.id,
+      receiptId: row.receipt_id,
+      eventType: row.event_type as ExecutionEventType,
+      timestamp: Number(row.timestamp),
+      rpcEndpoint: row.rpc_endpoint || undefined,
+      priorityFee: row.priority_fee !== null ? Number(row.priority_fee) : undefined,
+      slippageBps: row.slippage_bps !== null ? Number(row.slippage_bps) : undefined,
+      signature: row.signature || undefined,
+      status: row.status || undefined,
+      errorCode: row.error_code || undefined,
+      errorMessage: row.error_message || undefined,
+      metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+      createdAt: Number(row.created_at),
+    };
+  }
+
+  // ==================== Token Delegation Methods ====================
+
+  /**
+   * Save a new delegation
+   */
+  async saveDelegation(delegation: DelegationRecord): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    this.db.run(
+      `INSERT INTO token_delegations (
+        id, user_public_key, token_mint, token_account, delegate_public_key,
+        approved_amount, remaining_amount, status, intent_id, approval_signature,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        delegation.id,
+        delegation.userPublicKey,
+        delegation.tokenMint,
+        delegation.tokenAccount,
+        delegation.delegatePublicKey,
+        delegation.approvedAmount,
+        delegation.remainingAmount,
+        delegation.status,
+        delegation.intentId || null,
+        delegation.approvalSignature || null,
+        delegation.createdAt,
+        delegation.updatedAt,
+      ]
+    );
+
+    this.saveToFile();
+    this.log.debug({ delegationId: delegation.id }, 'Delegation saved');
+  }
+
+  /**
+   * Get a delegation by ID
+   */
+  async getDelegation(delegationId: string): Promise<DelegationRecord | undefined> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = this.db.exec(
+      `SELECT * FROM token_delegations WHERE id = ?`,
+      [delegationId]
+    );
+
+    if (result.length === 0 || result[0].values.length === 0) {
+      return undefined;
+    }
+
+    return this.mapDelegationRow(result[0].columns, result[0].values[0]);
+  }
+
+  /**
+   * Get delegations by user
+   */
+  async getDelegationsByUser(userPublicKey: string): Promise<DelegationRecord[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = this.db.exec(
+      `SELECT * FROM token_delegations WHERE user_public_key = ? ORDER BY created_at DESC`,
+      [userPublicKey]
+    );
+
+    if (result.length === 0) return [];
+
+    return result[0].values.map((row) =>
+      this.mapDelegationRow(result[0].columns, row)
+    );
+  }
+
+  /**
+   * Get active delegation for user and token
+   */
+  async getActiveDelegation(userPublicKey: string, tokenMint: string): Promise<DelegationRecord | undefined> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = this.db.exec(
+      `SELECT * FROM token_delegations 
+       WHERE user_public_key = ? AND token_mint = ? AND status = 'active'
+       ORDER BY created_at DESC LIMIT 1`,
+      [userPublicKey, tokenMint]
+    );
+
+    if (result.length === 0 || result[0].values.length === 0) {
+      return undefined;
+    }
+
+    return this.mapDelegationRow(result[0].columns, result[0].values[0]);
+  }
+
+  /**
+   * Update a delegation
+   */
+  async updateDelegation(delegation: DelegationRecord): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    this.db.run(
+      `UPDATE token_delegations SET
+        remaining_amount = ?,
+        status = ?,
+        approval_signature = ?,
+        updated_at = ?
+       WHERE id = ?`,
+      [
+        delegation.remainingAmount,
+        delegation.status,
+        delegation.approvalSignature || null,
+        delegation.updatedAt,
+        delegation.id,
+      ]
+    );
+
+    this.saveToFile();
+    this.log.debug({ delegationId: delegation.id, status: delegation.status }, 'Delegation updated');
+  }
+
+  /**
+   * Map database row to DelegationRecord
+   */
+  private mapDelegationRow(columns: string[], values: any[]): DelegationRecord {
+    const row: Record<string, any> = {};
+    columns.forEach((col, idx) => {
+      row[col] = values[idx];
+    });
+
+    return {
+      id: row.id,
+      userPublicKey: row.user_public_key,
+      tokenMint: row.token_mint,
+      tokenAccount: row.token_account,
+      delegatePublicKey: row.delegate_public_key,
+      approvedAmount: row.approved_amount,
+      remainingAmount: row.remaining_amount,
+      status: row.status as 'pending' | 'active' | 'revoked' | 'exhausted',
+      intentId: row.intent_id || undefined,
+      approvalSignature: row.approval_signature || undefined,
+      createdAt: Number(row.created_at),
+      updatedAt: Number(row.updated_at),
+    };
+  }
+}

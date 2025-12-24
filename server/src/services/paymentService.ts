@@ -18,6 +18,8 @@ import { DatabaseService } from '../db/database.js';
  * Payment request
  */
 export interface PaymentRequest {
+  /** Optional payment ID (useful for invoices/links) */
+  paymentId?: string;
   /** Payer's public key */
   payerPublicKey: string;
   /** Merchant's public key */
@@ -208,7 +210,7 @@ export class PaymentService {
    * Creates the swap + transfer transaction for the payer to sign.
    */
   async executePayment(request: PaymentRequest): Promise<PaymentResult> {
-    const paymentId = uuidv4();
+    const paymentId = request.paymentId || uuidv4();
     const timestamp = Date.now();
 
     this.log.info(
