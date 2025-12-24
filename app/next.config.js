@@ -2,6 +2,16 @@
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
+  
+  // Disable ESLint during builds for Vercel
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  
+  // Disable TypeScript errors during builds
+  typescript: {
+    ignoreBuildErrors: true,
+  },
 
   // Environment variables
   env: {

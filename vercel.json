@@ -3,6 +3,7 @@
   "buildCommand": "cd app && pnpm install && pnpm build",
   "outputDirectory": "app/.next",
   "framework": null,
+  "installCommand": "npm install -g pnpm && pnpm install --ignore-scripts",
   "regions": ["iad1"],
   "env": {
     "NEXT_PUBLIC_SOLANA_NETWORK": "devnet",
