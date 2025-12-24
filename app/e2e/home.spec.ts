@@ -11,8 +11,8 @@ test.describe('Home Page', () => {
     const header = page.locator('header');
     await expect(header).toBeVisible();
 
-    // Check main navigation links
-    await expect(page.getByRole('link', { name: /swap/i })).toBeVisible();
+    // Check main navigation links (use exact match or first)
+    await expect(page.getByRole('link', { name: 'Swap', exact: true })).toBeVisible();
 
     // Check footer is present
     const footer = page.locator('footer');
@@ -22,21 +22,23 @@ test.describe('Home Page', () => {
   test('should navigate to swap page', async ({ page }) => {
     await page.goto('/');
 
-    await page.getByRole('link', { name: /swap/i }).click();
+    // Use exact match to avoid multiple elements
+    await page.getByRole('link', { name: 'Swap', exact: true }).click();
     await expect(page).toHaveURL('/swap');
   });
 
   test('should navigate to DCA page', async ({ page }) => {
     await page.goto('/');
 
-    await page.getByRole('link', { name: /dca/i }).click();
+    // Use exact match
+    await page.getByRole('link', { name: 'DCA', exact: true }).click();
     await expect(page).toHaveURL('/dca');
   });
 
   test('should navigate to analytics page', async ({ page }) => {
     await page.goto('/');
 
-    await page.getByRole('link', { name: /analytics/i }).click();
+    await page.getByRole('link', { name: /analytics/i }).first().click();
     await expect(page).toHaveURL('/analytics');
   });
 });
