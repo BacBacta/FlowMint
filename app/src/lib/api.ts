@@ -1,10 +1,12 @@
 /**
  * FlowMint API Client
  *
- * Client library for interacting with the FlowMint server API
+ * Client library for interacting with the FlowMint server API.
+ * In production, uses Next.js API routes. In development, can use local backend.
  */
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+// Use empty string for relative URLs (same origin) in production
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 // Types
 export interface QuoteResponse {

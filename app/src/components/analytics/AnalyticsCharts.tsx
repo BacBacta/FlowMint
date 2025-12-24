@@ -24,7 +24,8 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+// Use relative path for Next.js API routes
+const API_BASE = '/api';
 
 interface ChartData {
   name: string;
