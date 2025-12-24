@@ -12,6 +12,15 @@ import { logger } from '../../utils/logger.js';
 
 const log = logger.child({ route: 'swap' });
 
+function isJupiterError(error: unknown): error is JupiterError {
+  if (error instanceof JupiterError) return true;
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { name?: string }).name === 'JupiterError'
+  );
+}
+
 /**
  * Request validation schemas
  */
@@ -97,7 +106,7 @@ export function createSwapRoutes(db: DatabaseService): Router {
         });
       }
 
-      if (error instanceof JupiterError) {
+      if (isJupiterError(error)) {
         // Bubble up Jupiter status when available; otherwise use a 502.
         const status = error.statusCode && error.statusCode >= 400 ? error.statusCode : 502;
         return res.status(status).json({

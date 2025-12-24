@@ -28,7 +28,10 @@ const configSchema = z.object({
 
   // Jupiter
   jupiter: z.object({
-    apiUrl: z.string().url().default('https://quote-api.jup.ag/v6'),
+    // NOTE: quote-api.jup.ag no longer resolves in some environments.
+    // The current public endpoint may require an API key.
+    apiUrl: z.string().url().default('https://api.jup.ag/swap/v1'),
+    apiKey: z.string().optional(),
     platformFeeBps: z.coerce.number().min(0).max(100).default(0),
   }),
 
@@ -83,6 +86,7 @@ function loadConfig() {
 
     jupiter: {
       apiUrl: process.env.JUPITER_API_URL,
+      apiKey: process.env.JUPITER_API_KEY,
       platformFeeBps: process.env.JUPITER_PLATFORM_FEE_BPS,
     },
 

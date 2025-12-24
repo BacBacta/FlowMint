@@ -182,6 +182,14 @@ export class JupiterService {
       timeout: 30000,
       headers: {
         'Content-Type': 'application/json',
+        ...(config.jupiter.apiKey
+          ? {
+              // Different Jupiter gateways have used different auth conventions.
+              // Sending both is harmless if one is ignored.
+              Authorization: `Bearer ${config.jupiter.apiKey}`,
+              'X-API-Key': config.jupiter.apiKey,
+            }
+          : {}),
       },
     });
 
@@ -424,6 +432,14 @@ export class JupiterService {
       );
 
       // Handle specific error codes
+      if (statusCode === 401 || statusCode === 403) {
+        return new JupiterError(
+          'Jupiter API unauthorized - configure JUPITER_API_KEY',
+          'UNAUTHORIZED',
+          statusCode,
+          axiosError.response?.data
+        );
+      }
       if (statusCode === 400) {
         return new JupiterError(
           `Invalid request: ${message}`,
