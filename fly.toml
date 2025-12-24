@@ -1,0 +1,41 @@
+# Fly.io configuration for FlowMint Backend
+# https://fly.io/docs/reference/configuration/
+
+app = 'flowmint-server'
+primary_region = 'cdg'  # Paris
+
+[build]
+  dockerfile = 'Dockerfile.server'
+
+[env]
+  NODE_ENV = 'production'
+  PORT = '3001'
+  SOLANA_NETWORK = 'devnet'
+  SOLANA_RPC_URL = 'https://api.devnet.solana.com'
+  JUPITER_API_URL = 'https://quote-api.jup.ag/v6'
+  PYTH_ENDPOINT = 'https://hermes.pyth.network'
+  FLOWMINT_PROGRAM_ID = 'CmPS9FdZQ4ex9A45yjvJGAjPBdBj6oYY9juQMfdzBJdi'
+  FLOWMINT_CONFIG_PDA = '7Q6tbtx6cL1uPiE64nLYMdQZNkBxyrygESyfak4DzmGh'
+
+[http_service]
+  internal_port = 3001
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+[[vm]]
+  memory = '256mb'
+  cpu_kind = 'shared'
+  cpus = 1
+
+[checks]
+  [checks.health]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    path = "/health"
+    port = 3001
+    timeout = "5s"
+    type = "http"

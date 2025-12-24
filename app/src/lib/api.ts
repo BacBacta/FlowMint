@@ -2,11 +2,16 @@
  * FlowMint API Client
  *
  * Client library for interacting with the FlowMint server API.
- * In production, uses Next.js API routes. In development, can use local backend.
+ * - When NEXT_PUBLIC_API_URL is set: uses external backend (e.g., Fly.io) with /api/v1 routes
+ * - When empty: uses Next.js API routes with /api routes
  */
 
-// Use empty string for relative URLs (same origin) in production
-const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+// Backend URL (empty = use Next.js API routes)
+const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || '';
+
+// API prefix differs based on target
+const API_PREFIX = BACKEND_URL ? '/api/v1' : '/api';
+const API_URL = BACKEND_URL;
 
 // Types
 export interface QuoteResponse {
@@ -119,9 +124,9 @@ class ApiClient {
     return response.json();
   }
 
-  // Health check
+  // Health check (backend uses /health directly, not under /api/v1)
   async healthCheck(): Promise<{ status: string; timestamp: string }> {
-    return this.request('/api/health');
+    return this.request('/health');
   }
 
   // Swap endpoints
@@ -133,48 +138,48 @@ class ApiClient {
       slippageBps: (params.slippageBps || 50).toString(),
     });
 
-    return this.request(`/api/swap/quote?${queryParams}`);
+    return this.request(`${API_PREFIX}/swap/quote?${queryParams}`);
   }
 
   async executeSwap(params: SwapRequest): Promise<SwapResponse> {
-    return this.request('/api/swap/execute', {
+    return this.request(`${API_PREFIX}/swap/execute`, {
       method: 'POST',
       body: JSON.stringify(params),
     });
   }
 
   async getSwapReceipts(userPublicKey: string): Promise<any[]> {
-    return this.request(`/api/swap/receipts/${userPublicKey}`);
+    return this.request(`${API_PREFIX}/swap/receipts/${userPublicKey}`);
   }
 
-  // Intent endpoints
+  // Intent endpoints (backend uses /intents, not /intent)
   async createIntent(params: IntentRequest): Promise<IntentResponse> {
-    return this.request('/api/intent', {
+    return this.request(`${API_PREFIX}/intents`, {
       method: 'POST',
       body: JSON.stringify(params),
     });
   }
 
   async getIntents(userPublicKey: string): Promise<any[]> {
-    return this.request(`/api/intent/${userPublicKey}`);
+    return this.request(`${API_PREFIX}/intents/${userPublicKey}`);
   }
 
   async cancelIntent(intentId: string): Promise<{ success: boolean }> {
-    return this.request(`/api/intent/${intentId}`, {
+    return this.request(`${API_PREFIX}/intents/${intentId}`, {
       method: 'DELETE',
     });
   }
 
-  // Payment endpoints
+  // Payment endpoints (backend uses /payments, not /payment)
   async createPaymentLink(params: PaymentRequest): Promise<PaymentLinkResponse> {
-    return this.request('/api/payment/create-link', {
+    return this.request(`${API_PREFIX}/payments/create-link`, {
       method: 'POST',
       body: JSON.stringify(params),
     });
   }
 
   async getPaymentStatus(paymentId: string): Promise<any> {
-    return this.request(`/api/payment/${paymentId}`);
+    return this.request(`${API_PREFIX}/payments/${paymentId}`);
   }
 
   async executePayment(
@@ -182,7 +187,7 @@ class ApiClient {
     payerPublicKey: string,
     payerMint: string
   ): Promise<SwapResponse> {
-    return this.request(`/api/payment/${paymentId}/execute`, {
+    return this.request(`${API_PREFIX}/payments/${paymentId}/execute`, {
       method: 'POST',
       body: JSON.stringify({ payerPublicKey, payerMint }),
     });
