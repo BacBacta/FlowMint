@@ -234,7 +234,10 @@ export class JupiterService {
         );
       }
 
-      const response = await this.client.get<QuoteResponse>(`/quote?${params.toString()}`);
+      // NOTE: axios treats a leading slash as an absolute path and will drop the
+      // path component from baseURL. Since our baseURL is typically
+      // "https://quote-api.jup.ag/v6", we must use a relative path here.
+      const response = await this.client.get<QuoteResponse>(`quote?${params.toString()}`);
 
       this.log.info(
         {
@@ -274,7 +277,8 @@ export class JupiterService {
     this.log.debug({ userPublicKey: request.userPublicKey }, 'Getting swap transaction');
 
     try {
-      const response = await this.client.post<SwapResponse>('/swap', {
+      // Same rule as above: keep this relative so baseURL's "/v6" is preserved.
+      const response = await this.client.post<SwapResponse>('swap', {
         quoteResponse: request.quoteResponse,
         userPublicKey: request.userPublicKey,
         wrapAndUnwrapSol: request.wrapAndUnwrapSol ?? true,

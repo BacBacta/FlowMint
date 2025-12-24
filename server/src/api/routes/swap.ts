@@ -7,7 +7,7 @@ import { z } from 'zod';
 
 import { DatabaseService } from '../../db/database.js';
 import { ExecutionEngine } from '../../services/executionEngine.js';
-import { jupiterService } from '../../services/jupiterService.js';
+import { jupiterService, JupiterError } from '../../services/jupiterService.js';
 import { logger } from '../../utils/logger.js';
 
 const log = logger.child({ route: 'swap' });
@@ -94,6 +94,16 @@ export function createSwapRoutes(db: DatabaseService): Router {
           success: false,
           error: 'Invalid request parameters',
           details: error.errors,
+        });
+      }
+
+      if (error instanceof JupiterError) {
+        // Bubble up Jupiter status when available; otherwise use a 502.
+        const status = error.statusCode && error.statusCode >= 400 ? error.statusCode : 502;
+        return res.status(status).json({
+          success: false,
+          error: error.message,
+          code: error.code,
         });
       }
       next(error);
