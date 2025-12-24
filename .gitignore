@@ -125,3 +125,4 @@ data/
 .stylelintcache
 *.tgz
 .turbo
+.vercel
