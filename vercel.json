@@ -1,9 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "nextjs",
+  "buildCommand": "cd app && pnpm install && pnpm build",
   "outputDirectory": "app/.next",
-  "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm --filter @flowmint/app build",
+  "framework": null,
   "regions": ["iad1"],
   "env": {
     "NEXT_PUBLIC_SOLANA_NETWORK": "devnet",
