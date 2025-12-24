@@ -203,7 +203,30 @@ pnpm test:e2e         # Run Playwright E2E tests
 
 ---
 
-## 📚 Documentation
+## � Deployments
+
+### Devnet (Current)
+
+| Component | Address/URL |
+|-----------|-------------|
+| **Program ID** | `D6ABGCinQcXfg5N4toSEWDo3iDPwYMZ22HvURR1Fb1hf` |
+| **Config PDA** | `EDkFRPhkZtoJf3LVPQu35jQG1RcBaxrEQxzC2AiVBt4K` |
+| **Explorer** | [View on Solscan](https://solscan.io/account/D6ABGCinQcXfg5N4toSEWDo3iDPwYMZ22HvURR1Fb1hf?cluster=devnet) |
+| **Network** | Solana Devnet |
+
+### Configuration
+
+```bash
+# Initialize devnet program
+cd server && npx tsx ../scripts/initialize-devnet.ts
+
+# Verify deployment
+solana program show D6ABGCinQcXfg5N4toSEWDo3iDPwYMZ22HvURR1Fb1hf --url devnet
+```
+
+---
+
+## �📚 Documentation
 
 | Document | Description |
 |----------|-------------|
