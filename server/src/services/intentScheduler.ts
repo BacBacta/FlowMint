@@ -278,6 +278,7 @@ export class IntentScheduler {
 
   /**
    * Cancel an intent
+   * Handles graceful cancellation even if a job is currently running
    */
   async cancelIntent(intentId: string, userPublicKey: string): Promise<void> {
     const intent = await this.db.getIntent(intentId);
@@ -294,8 +295,22 @@ export class IntentScheduler {
       throw new Error('Intent cannot be cancelled');
     }
 
+    // Check if there's a running job and mark it for cancellation
+    // The job will check intent status before executing
     await this.db.updateIntentStatus(intentId, IntentStatus.CANCELLED);
-    this.log.info({ intentId }, 'Intent cancelled');
+
+    // Mark any pending jobs as skipped
+    const pendingJobs = await this.jobLockService.getJobsByIntentId(intentId);
+    for (const job of pendingJobs) {
+      if (job.status === JobStatus.RUNNING || job.status === JobStatus.PENDING) {
+        await this.jobLockService.releaseLock(job.id, {
+          success: false,
+          error: 'Intent cancelled by user',
+        });
+      }
+    }
+
+    this.log.info({ intentId, jobsCancelled: pendingJobs.length }, 'Intent cancelled');
   }
 
   /**
@@ -346,6 +361,17 @@ export class IntentScheduler {
     this.log.info({ intentId: intent.id, jobId }, 'Executing DCA slice with job lock');
 
     try {
+      // Re-check intent status before execution (may have been cancelled)
+      const currentIntent = await this.db.getIntent(intent.id);
+      if (!currentIntent || currentIntent.status === IntentStatus.CANCELLED) {
+        this.log.info({ intentId: intent.id, jobId }, 'Intent cancelled before execution');
+        await this.jobLockService.releaseLock(jobId, {
+          success: false,
+          error: 'Intent cancelled',
+        });
+        return;
+      }
+
       const amountToSwap = intent.amountPerSwap || intent.remainingAmount;
 
       const result = await this.executionEngine.executeSwap({

@@ -21,6 +21,7 @@ import { createHealthRoutes } from './api/routes/health.js';
 import { createNotificationRoutes } from './api/routes/notifications.js';
 import { createAnalyticsRoutes } from './api/routes/analytics.js';
 import { createAuthRoutes } from './api/routes/auth.js';
+import metricsRouter from './api/routes/metrics.js';
 import swaggerRouter from './api/swagger.js';
 
 /**
@@ -68,6 +69,9 @@ export function createApp(db: DatabaseService): Express {
 
   // Health check routes
   app.use('/health', createHealthRoutes());
+
+  // Metrics endpoint (Prometheus format)
+  app.use('/metrics', metricsRouter);
 
   // API Documentation (Swagger UI)
   app.use('/docs', swaggerRouter);

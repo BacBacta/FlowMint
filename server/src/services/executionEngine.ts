@@ -61,6 +61,10 @@ import {
   ReceiptService,
   EnhancedReceipt,
 } from './receiptService.js';
+import {
+  getMetricsService,
+  MetricsService,
+} from './metricsService.js';
 
 /**
  * Execution mode for speed/reliability tradeoff
@@ -219,6 +223,7 @@ export class ExecutionEngine {
   // Production services
   private readonly riskScoring: RiskScoringService;
   private readonly receiptService: ReceiptService;
+  private readonly metrics: MetricsService;
 
   constructor(private readonly db: DatabaseService) {
     // Start RPC manager health monitoring
@@ -227,6 +232,7 @@ export class ExecutionEngine {
     // Initialize production services
     this.riskScoring = new RiskScoringService();
     this.receiptService = new ReceiptService(db);
+    this.metrics = getMetricsService();
 
     this.log.info('ExecutionEngine initialized with production services');
   }
@@ -253,6 +259,9 @@ export class ExecutionEngine {
     const executionMode = request.executionMode || (request.protectedMode ? 'protected' : 'standard');
     const feeProfile = EXECUTION_MODE_TO_FEE_PROFILE[executionMode];
     const retryStrategy = EXECUTION_PROFILES[feeProfile === 'FAST' ? 'FAST' : 'AUTO'];
+
+    // Start metrics timer
+    const metricsTimer = this.metrics.startTimer('swap', feeProfile);
 
     this.log.info(
       {
@@ -304,6 +313,11 @@ export class ExecutionEngine {
       // Block execution if risk is RED in protected mode
       if (riskAssessment.blockedInProtectedMode) {
         const reasons = riskAssessment.reasons.map(r => r.message).join('; ');
+
+        // Record risk blocked metric
+        this.metrics.recordRiskBlocked('swap', 'RED', 'protected_mode');
+        metricsTimer.end('failed', 'RISK_BLOCKED');
+
         return this.createFailedResult(
           receiptId,
           `Blocked by risk policy: ${reasons}`,
@@ -430,6 +444,9 @@ export class ExecutionEngine {
       // Build retry metrics
       const retryMetrics = buildRetryMetrics(retryState, true);
 
+      // Record success metrics
+      metricsTimer.end('success');
+
       this.log.info(
         {
           receiptId,
@@ -469,6 +486,9 @@ export class ExecutionEngine {
       // Classify the error for metrics
       const classifiedError = classifyError(error instanceof Error ? error : new Error(message));
       const retryMetrics = buildRetryMetrics(retryState, false);
+
+      // Record failure metrics
+      metricsTimer.end('failed', classifiedError.code);
 
       this.log.error(
         {
@@ -543,6 +563,7 @@ export class ExecutionEngine {
         // If requote needed, increment counter
         if (classifiedError.requiresRequote) {
           state.requotes++;
+          this.metrics.recordRequote('swap');
           // Increase slippage for requote if not in protected mode
           if (!request.protectedMode) {
             request.slippageBps = Math.min(
@@ -551,6 +572,9 @@ export class ExecutionEngine {
             );
           }
         }
+
+        // Record retry metric
+        this.metrics.recordRetry('swap', classifiedError.code);
 
         this.log.warn(
           {

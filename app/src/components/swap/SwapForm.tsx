@@ -17,6 +17,8 @@ import {
 } from '@/components/risk';
 
 import { TokenSelector } from './TokenSelector';
+import { ExecutionProfileSelector, type ExecutionProfile } from './ExecutionProfileSelector';
+import { ReceiptModal } from './ReceiptModal';
 
 // Common tokens
 const POPULAR_TOKENS = [
@@ -48,6 +50,9 @@ export function SwapForm() {
   const [protectedMode, setProtectedMode] = useState(false);
   const [riskAcknowledged, setRiskAcknowledged] = useState(false);
   const [executionSteps, setExecutionSteps] = useState<ExecutionStep[]>([]);
+  const [executionProfile, setExecutionProfile] = useState<ExecutionProfile>('AUTO');
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [lastReceipt, setLastReceipt] = useState<any>(null);
 
   // Debounced quote fetch
   const debouncedAmount = useDebounce(inputAmount, 500);
@@ -272,6 +277,14 @@ export function SwapForm() {
               step={0.1}
             />
           </div>
+
+          {/* Execution Profile Selector */}
+          <div className="mt-4">
+            <ExecutionProfileSelector
+              value={executionProfile}
+              onChange={setExecutionProfile}
+            />
+          </div>
         </div>
       )}
 
@@ -468,6 +481,13 @@ export function SwapForm() {
           Swap failed: {(swapMutation.error as Error).message}
         </div>
       )}
+
+      {/* Receipt Modal */}
+      <ReceiptModal
+        isOpen={showReceiptModal}
+        onClose={() => setShowReceiptModal(false)}
+        receipt={lastReceipt}
+      />
     </div>
   );
 }

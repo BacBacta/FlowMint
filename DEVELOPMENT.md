@@ -311,6 +311,39 @@ POST https://mainnet.block-engine.jito.wtf/api/v1/bundles
 
 ---
 
+### Phase 7: MVP Finalization *(In Progress)*
+
+#### 7.1 Metrics & Monitoring
+- [ ] **7.1.1** Implement MetricsService with prom-client
+  - [ ] Swap counters (total, success, failed)
+  - [ ] Re-quote and retry counters
+  - [ ] Confirmation duration histograms (p50/p95/p99)
+  - [ ] Risk gating blocked execution counter
+- [ ] **7.1.2** Expose `/metrics` endpoint (Prometheus format)
+- [ ] **7.1.3** Add structured logging with pino
+  - [ ] Log receiptId, riskLevel, attempts, profile, durationMs
+- [ ] **7.1.4** (Optional) Grafana dashboard configuration
+
+#### 7.2 UI Enhancements
+- [ ] **7.2.1** Create ExecutionProfileSelector component (AUTO/FAST/CHEAP)
+- [ ] **7.2.2** Add ReceiptModal with detailed swap/payment info
+- [ ] **7.2.3** Improve IntentForm with validation
+- [ ] **7.2.4** Add execution timeline visualization
+
+#### 7.3 Intent Orchestrator Improvements
+- [x] **7.3.1** Implement JobLockService with database-backed locks *(Completed)*
+- [ ] **7.3.2** Add proper cancellation during execution
+- [ ] **7.3.3** Implement SPL Token delegation for non-custodial DCA
+- [ ] **7.3.4** (Optional) Jupiter Recurring/Trigger API adapters
+
+#### 7.4 Test Coverage & CI
+- [ ] **7.4.1** Achieve ≥80% coverage on critical services
+- [ ] **7.4.2** Add concurrent execution tests for IntentScheduler
+- [ ] **7.4.3** Add Anchor tests for edge cases (slippage, expired quotes)
+- [ ] **7.4.4** Configure coverage threshold in CI
+
+---
+
 ## 🔧 Technical Decisions
 
 | Decision | Rationale | Date |

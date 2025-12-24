@@ -126,3 +126,4 @@ data/
 *.tgz
 .turbo
 .vercel
+.env*.local

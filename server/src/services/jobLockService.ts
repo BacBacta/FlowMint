@@ -234,6 +234,14 @@ export class JobLockService {
   }
 
   /**
+   * Get all jobs for an intent
+   */
+  async getJobsByIntentId(intentId: string): Promise<Job[]> {
+    const jobs = await this.db.getJobsByIntent(intentId);
+    return jobs.map((j) => this.rowToJob(j));
+  }
+
+  /**
    * Get pending jobs for an intent
    */
   async getPendingJobs(intentId: string): Promise<Job[]> {
