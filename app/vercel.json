@@ -3,7 +3,7 @@
   "framework": "nextjs",
   "installCommand": "npm install --legacy-peer-deps",
   "buildCommand": "npm run build",
-  "ignoreCommand": "exit 0"
+  "ignoreCommand": "exit 0",
   "outputDirectory": ".next",
   "regions": ["iad1"],
   "env": {
