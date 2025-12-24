@@ -24,7 +24,7 @@ pub mod state;
 use errors::FlowMintError;
 use instructions::*;
 
-declare_id!("D6ABGCinQcXfg5N4toSEWDo3iDPwYMZ22HvURR1Fb1hf");
+declare_id!("CmPS9FdZQ4ex9A45yjvJGAjPBdBj6oYY9juQMfdzBJdi");
 
 /// The main FlowMint program module
 #[program]

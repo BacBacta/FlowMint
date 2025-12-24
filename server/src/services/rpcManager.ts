@@ -60,31 +60,51 @@ export interface RpcManagerConfig {
 
 /**
  * Default RPC endpoints
+ *
+ * On devnet, we only use the configured RPC URL.
+ * On mainnet, additional fallback endpoints can be enabled with proper API keys.
  */
-const DEFAULT_ENDPOINTS: RpcEndpoint[] = [
-  {
-    url: config.solana.rpcUrl,
-    weight: 10,
-    isPremium: true,
-    name: 'primary',
-  },
-  {
-    url: 'https://api.mainnet-beta.solana.com',
-    weight: 3,
-    rateLimit: 10, // Public endpoints have rate limits
-    name: 'solana-public',
-  },
-  {
-    url: 'https://rpc.ankr.com/solana',
-    weight: 5,
-    name: 'ankr',
-  },
-  {
-    url: 'https://solana-mainnet.rpc.extrnode.com',
-    weight: 3,
-    name: 'extrnode',
-  },
-];
+const DEFAULT_ENDPOINTS: RpcEndpoint[] = config.solana.network === 'mainnet-beta'
+  ? [
+      {
+        url: config.solana.rpcUrl,
+        weight: 10,
+        isPremium: true,
+        name: 'primary',
+      },
+      {
+        url: 'https://api.mainnet-beta.solana.com',
+        weight: 3,
+        rateLimit: 10, // Public endpoints have rate limits
+        name: 'solana-public',
+      },
+      // NOTE: These endpoints require API tokens. Uncomment if tokens are set.
+      // {
+      //   url: 'https://rpc.ankr.com/solana',
+      //   weight: 5,
+      //   name: 'ankr',
+      // },
+      // {
+      //   url: 'https://solana-mainnet.rpc.extrnode.com',
+      //   weight: 3,
+      //   name: 'extrnode',
+      // },
+    ]
+  : [
+      // Devnet: only use the configured devnet RPC
+      {
+        url: config.solana.rpcUrl,
+        weight: 10,
+        isPremium: true,
+        name: 'primary',
+      },
+      {
+        url: 'https://api.devnet.solana.com',
+        weight: 3,
+        rateLimit: 10,
+        name: 'solana-devnet-public',
+      },
+    ];
 
 /**
  * RPC Manager

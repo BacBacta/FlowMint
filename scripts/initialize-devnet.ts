@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 // FlowMint Program ID (deployed on devnet)
-const FLOWMINT_PROGRAM_ID = new PublicKey('D6ABGCinQcXfg5N4toSEWDo3iDPwYMZ22HvURR1Fb1hf');
+const FLOWMINT_PROGRAM_ID = new PublicKey('CmPS9FdZQ4ex9A45yjvJGAjPBdBj6oYY9juQMfdzBJdi');
 
 // Devnet RPC endpoint
 const DEVNET_RPC = 'https://api.devnet.solana.com';

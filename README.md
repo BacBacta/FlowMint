@@ -209,9 +209,9 @@ pnpm test:e2e         # Run Playwright E2E tests
 
 | Component | Address/URL |
 |-----------|-------------|
-| **Program ID** | `D6ABGCinQcXfg5N4toSEWDo3iDPwYMZ22HvURR1Fb1hf` |
-| **Config PDA** | `EDkFRPhkZtoJf3LVPQu35jQG1RcBaxrEQxzC2AiVBt4K` |
-| **Explorer** | [View on Solscan](https://solscan.io/account/D6ABGCinQcXfg5N4toSEWDo3iDPwYMZ22HvURR1Fb1hf?cluster=devnet) |
+| **Program ID** | `CmPS9FdZQ4ex9A45yjvJGAjPBdBj6oYY9juQMfdzBJdi` |
+| **Config PDA** | `7Q6tbtx6cL1uPiE64nLYMdQZNkBxyrygESyfak4DzmGh` |
+| **Explorer** | [View on Solscan](https://solscan.io/account/CmPS9FdZQ4ex9A45yjvJGAjPBdBj6oYY9juQMfdzBJdi?cluster=devnet) |
 | **Network** | Solana Devnet |
 
 ### Configuration
@@ -221,7 +221,7 @@ pnpm test:e2e         # Run Playwright E2E tests
 cd server && npx tsx ../scripts/initialize-devnet.ts
 
 # Verify deployment
-solana program show D6ABGCinQcXfg5N4toSEWDo3iDPwYMZ22HvURR1Fb1hf --url devnet
+solana program show CmPS9FdZQ4ex9A45yjvJGAjPBdBj6oYY9juQMfdzBJdi --url devnet
 ```
 
 ---

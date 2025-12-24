@@ -45,7 +45,7 @@ describe("flowmint", () => {
   let configBump: number;
 
   // Program ID - will be updated after build
-  const PROGRAM_ID = new PublicKey("D6ABGCinQcXfg5N4toSEWDo3iDPwYMZ22HvURR1Fb1hf");
+  const PROGRAM_ID = new PublicKey("CmPS9FdZQ4ex9A45yjvJGAjPBdBj6oYY9juQMfdzBJdi");
 
   // Jupiter program ID (mock for testing)
   const JUPITER_PROGRAM_ID = new PublicKey("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4");
