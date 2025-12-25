@@ -89,6 +89,145 @@ export interface ReceiptRecord {
   timestamp: number;
 }
 
+// ==================== PortfolioPay V1 Types ====================
+
+/**
+ * Merchant record
+ */
+export interface MerchantRecord {
+  id: string;
+  name: string;
+  settleMint: string;
+  webhookUrl?: string;
+  apiKeyHash?: string;
+  status: 'active' | 'suspended' | 'deleted';
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * Policy record for merchant payment rules
+ */
+export interface PolicyRecord {
+  id: string;
+  merchantId: string;
+  name: string;
+  jsonCanonical: string;
+  hash: string;
+  version: number;
+  maxSlippageBps: number;
+  maxPriceImpactBps: number;
+  maxHops: number;
+  protectedMode: boolean;
+  allowedTokens?: string[];
+  deniedTokens?: string[];
+  createdAt: number;
+}
+
+/**
+ * Invoice record
+ */
+export interface InvoiceRecord {
+  id: string;
+  merchantId: string;
+  orderId?: string;
+  settleMint: string;
+  amountOut: string;
+  policyId?: string;
+  status: 'pending' | 'reserved' | 'paid' | 'expired' | 'failed' | 'refunded' | 'cancelled';
+  idempotencyKey?: string;
+  payerPublicKey?: string;
+  reservedUntil?: number;
+  expiresAt: number;
+  paidAt?: number;
+  txSignature?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * Payment quote record
+ */
+export interface PaymentQuoteRecord {
+  id: string;
+  invoiceId: string;
+  payer: string;
+  payMint: string;
+  planJson: string;
+  riskJson: string;
+  feesJson?: string;
+  requiresGasless: boolean;
+  ttlMs: number;
+  expiresAt: number;
+  createdAt: number;
+}
+
+/**
+ * Payment attempt type
+ */
+export type PaymentAttemptEventType =
+  | 'quote'
+  | 'build'
+  | 'send'
+  | 'gasless_submit'
+  | 'confirm'
+  | 'requote'
+  | 'retry'
+  | 'success'
+  | 'failure'
+  | 'refund';
+
+/**
+ * Payment attempt record
+ */
+export interface PaymentAttemptRecord {
+  id?: number;
+  invoiceId: string;
+  quoteId?: string;
+  attemptNo: number;
+  eventType: PaymentAttemptEventType;
+  mode?: 'normal' | 'gasless';
+  signature?: string;
+  status?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  metadataJson?: string;
+  createdAt: number;
+}
+
+/**
+ * Attestation record
+ */
+export interface AttestationRecord {
+  id: string;
+  invoiceId: string;
+  policyHash: string;
+  payloadJson: string;
+  plannedJson: string;
+  actualJson: string;
+  signerPubkey: string;
+  signature: string;
+  verificationUrl?: string;
+  createdAt: number;
+}
+
+/**
+ * Relayer submission record
+ */
+export interface RelayerSubmissionRecord {
+  id: string;
+  invoiceId: string;
+  payer: string;
+  signedTxHash: string;
+  relayerFeeLamports?: number;
+  status: 'pending' | 'submitted' | 'confirmed' | 'failed';
+  signature?: string;
+  error?: string;
+  submittedAt: number;
+  confirmedAt?: number;
+  createdAt: number;
+}
+
 /**
  * Database Service
  *
@@ -354,6 +493,160 @@ export class DatabaseService {
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_delegations_user ON token_delegations(user_public_key)`);
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_delegations_status ON token_delegations(status)`);
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_delegations_intent ON token_delegations(intent_id)`);
+
+    // ==================== PortfolioPay V1 Tables ====================
+
+    // Merchants table
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS merchants (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        settle_mint TEXT NOT NULL,
+        webhook_url TEXT,
+        api_key_hash TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_merchants_status ON merchants(status)`);
+
+    // Policies table
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS policies (
+        id TEXT PRIMARY KEY,
+        merchant_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        json_canonical TEXT NOT NULL,
+        hash TEXT NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1,
+        max_slippage_bps INTEGER DEFAULT 100,
+        max_price_impact_bps INTEGER DEFAULT 300,
+        max_hops INTEGER DEFAULT 4,
+        protected_mode INTEGER DEFAULT 0,
+        allowed_tokens TEXT,
+        denied_tokens TEXT,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (merchant_id) REFERENCES merchants(id)
+      )
+    `);
+
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_policies_merchant ON policies(merchant_id)`);
+    this.db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_policies_hash ON policies(hash)`);
+
+    // Invoices table (extends payment_links concept)
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS invoices (
+        id TEXT PRIMARY KEY,
+        merchant_id TEXT NOT NULL,
+        order_id TEXT,
+        settle_mint TEXT NOT NULL,
+        amount_out TEXT NOT NULL,
+        policy_id TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        idempotency_key TEXT UNIQUE,
+        payer_public_key TEXT,
+        reserved_until INTEGER,
+        expires_at INTEGER NOT NULL,
+        paid_at INTEGER,
+        tx_signature TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (merchant_id) REFERENCES merchants(id),
+        FOREIGN KEY (policy_id) REFERENCES policies(id)
+      )
+    `);
+
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_invoices_merchant ON invoices(merchant_id)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_invoices_expires ON invoices(expires_at)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_invoices_payer ON invoices(payer_public_key)`);
+
+    // Payment quotes table
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS payment_quotes (
+        id TEXT PRIMARY KEY,
+        invoice_id TEXT NOT NULL,
+        payer TEXT NOT NULL,
+        pay_mint TEXT NOT NULL,
+        plan_json TEXT NOT NULL,
+        risk_json TEXT NOT NULL,
+        fees_json TEXT,
+        requires_gasless INTEGER DEFAULT 0,
+        ttl_ms INTEGER DEFAULT 15000,
+        expires_at INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (invoice_id) REFERENCES invoices(id)
+      )
+    `);
+
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_payment_quotes_invoice ON payment_quotes(invoice_id)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_payment_quotes_expires ON payment_quotes(expires_at)`);
+
+    // Payment attempts table
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS payment_attempts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_id TEXT NOT NULL,
+        quote_id TEXT,
+        attempt_no INTEGER NOT NULL,
+        event_type TEXT NOT NULL,
+        mode TEXT,
+        signature TEXT,
+        status TEXT,
+        error_code TEXT,
+        error_message TEXT,
+        metadata_json TEXT,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (invoice_id) REFERENCES invoices(id),
+        FOREIGN KEY (quote_id) REFERENCES payment_quotes(id)
+      )
+    `);
+
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_payment_attempts_invoice ON payment_attempts(invoice_id)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_payment_attempts_quote ON payment_attempts(quote_id)`);
+
+    // Attestations table
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS attestations (
+        id TEXT PRIMARY KEY,
+        invoice_id TEXT NOT NULL,
+        policy_hash TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        planned_json TEXT NOT NULL,
+        actual_json TEXT NOT NULL,
+        signer_pubkey TEXT NOT NULL,
+        signature TEXT NOT NULL,
+        verification_url TEXT,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (invoice_id) REFERENCES invoices(id)
+      )
+    `);
+
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_attestations_invoice ON attestations(invoice_id)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_attestations_policy ON attestations(policy_hash)`);
+
+    // Relayer submissions table (for gasless tracking)
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS relayer_submissions (
+        id TEXT PRIMARY KEY,
+        invoice_id TEXT NOT NULL,
+        payer TEXT NOT NULL,
+        signed_tx_hash TEXT NOT NULL,
+        relayer_fee_lamports INTEGER,
+        status TEXT NOT NULL DEFAULT 'pending',
+        signature TEXT,
+        error TEXT,
+        submitted_at INTEGER NOT NULL,
+        confirmed_at INTEGER,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (invoice_id) REFERENCES invoices(id)
+      )
+    `);
+
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_relayer_invoice ON relayer_submissions(invoice_id)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_relayer_status ON relayer_submissions(status)`);
 
     this.log.debug('Database tables created');
   }
@@ -1630,5 +1923,502 @@ export class DatabaseService {
       createdAt: Number(row.created_at),
       updatedAt: Number(row.updated_at),
     };
+  }
+
+  // ==================== PortfolioPay V1 Methods ====================
+
+  // ---------- Merchant Methods ----------
+
+  async saveMerchant(merchant: MerchantRecord): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    this.db.run(
+      `INSERT INTO merchants (id, name, settle_mint, webhook_url, api_key_hash, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        merchant.id,
+        merchant.name,
+        merchant.settleMint,
+        merchant.webhookUrl || null,
+        merchant.apiKeyHash || null,
+        merchant.status,
+        merchant.createdAt,
+        merchant.updatedAt,
+      ]
+    );
+
+    this.saveToFile();
+  }
+
+  async getMerchant(merchantId: string): Promise<MerchantRecord | undefined> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = this.db.exec(`SELECT * FROM merchants WHERE id = ?`, [merchantId]);
+
+    if (result.length === 0 || result[0].values.length === 0) return undefined;
+
+    const row = this.mapRow(result[0].columns, result[0].values[0]);
+    return {
+      id: row.id,
+      name: row.name,
+      settleMint: row.settle_mint,
+      webhookUrl: row.webhook_url || undefined,
+      apiKeyHash: row.api_key_hash || undefined,
+      status: row.status,
+      createdAt: Number(row.created_at),
+      updatedAt: Number(row.updated_at),
+    };
+  }
+
+  // ---------- Policy Methods ----------
+
+  async savePolicy(policy: PolicyRecord): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    this.db.run(
+      `INSERT INTO policies (id, merchant_id, name, json_canonical, hash, version, max_slippage_bps, max_price_impact_bps, max_hops, protected_mode, allowed_tokens, denied_tokens, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        policy.id,
+        policy.merchantId,
+        policy.name,
+        policy.jsonCanonical,
+        policy.hash,
+        policy.version,
+        policy.maxSlippageBps,
+        policy.maxPriceImpactBps,
+        policy.maxHops,
+        policy.protectedMode ? 1 : 0,
+        policy.allowedTokens ? JSON.stringify(policy.allowedTokens) : null,
+        policy.deniedTokens ? JSON.stringify(policy.deniedTokens) : null,
+        policy.createdAt,
+      ]
+    );
+
+    this.saveToFile();
+  }
+
+  async getPolicy(policyId: string): Promise<PolicyRecord | undefined> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = this.db.exec(`SELECT * FROM policies WHERE id = ?`, [policyId]);
+
+    if (result.length === 0 || result[0].values.length === 0) return undefined;
+
+    const row = this.mapRow(result[0].columns, result[0].values[0]);
+    return this.mapPolicyRow(row);
+  }
+
+  async getPolicyByHash(hash: string): Promise<PolicyRecord | undefined> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = this.db.exec(`SELECT * FROM policies WHERE hash = ?`, [hash]);
+
+    if (result.length === 0 || result[0].values.length === 0) return undefined;
+
+    const row = this.mapRow(result[0].columns, result[0].values[0]);
+    return this.mapPolicyRow(row);
+  }
+
+  private mapPolicyRow(row: Record<string, any>): PolicyRecord {
+    return {
+      id: row.id,
+      merchantId: row.merchant_id,
+      name: row.name,
+      jsonCanonical: row.json_canonical,
+      hash: row.hash,
+      version: Number(row.version),
+      maxSlippageBps: Number(row.max_slippage_bps),
+      maxPriceImpactBps: Number(row.max_price_impact_bps),
+      maxHops: Number(row.max_hops),
+      protectedMode: Boolean(row.protected_mode),
+      allowedTokens: row.allowed_tokens ? JSON.parse(row.allowed_tokens) : undefined,
+      deniedTokens: row.denied_tokens ? JSON.parse(row.denied_tokens) : undefined,
+      createdAt: Number(row.created_at),
+    };
+  }
+
+  // ---------- Invoice Methods ----------
+
+  async saveInvoice(invoice: InvoiceRecord): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    this.db.run(
+      `INSERT INTO invoices (id, merchant_id, order_id, settle_mint, amount_out, policy_id, status, idempotency_key, payer_public_key, reserved_until, expires_at, paid_at, tx_signature, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        invoice.id,
+        invoice.merchantId,
+        invoice.orderId || null,
+        invoice.settleMint,
+        invoice.amountOut,
+        invoice.policyId || null,
+        invoice.status,
+        invoice.idempotencyKey || null,
+        invoice.payerPublicKey || null,
+        invoice.reservedUntil || null,
+        invoice.expiresAt,
+        invoice.paidAt || null,
+        invoice.txSignature || null,
+        invoice.createdAt,
+        invoice.updatedAt,
+      ]
+    );
+
+    this.saveToFile();
+  }
+
+  async getInvoice(invoiceId: string): Promise<InvoiceRecord | undefined> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = this.db.exec(`SELECT * FROM invoices WHERE id = ?`, [invoiceId]);
+
+    if (result.length === 0 || result[0].values.length === 0) return undefined;
+
+    const row = this.mapRow(result[0].columns, result[0].values[0]);
+    return this.mapInvoiceRow(row);
+  }
+
+  async getInvoiceByIdempotencyKey(key: string): Promise<InvoiceRecord | undefined> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = this.db.exec(`SELECT * FROM invoices WHERE idempotency_key = ?`, [key]);
+
+    if (result.length === 0 || result[0].values.length === 0) return undefined;
+
+    const row = this.mapRow(result[0].columns, result[0].values[0]);
+    return this.mapInvoiceRow(row);
+  }
+
+  async updateInvoice(invoiceId: string, updates: Partial<InvoiceRecord>): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const setClauses: string[] = [];
+    const values: any[] = [];
+
+    if (updates.status !== undefined) {
+      setClauses.push('status = ?');
+      values.push(updates.status);
+    }
+    if (updates.payerPublicKey !== undefined) {
+      setClauses.push('payer_public_key = ?');
+      values.push(updates.payerPublicKey);
+    }
+    if (updates.reservedUntil !== undefined) {
+      setClauses.push('reserved_until = ?');
+      values.push(updates.reservedUntil);
+    }
+    if (updates.paidAt !== undefined) {
+      setClauses.push('paid_at = ?');
+      values.push(updates.paidAt);
+    }
+    if (updates.txSignature !== undefined) {
+      setClauses.push('tx_signature = ?');
+      values.push(updates.txSignature);
+    }
+
+    setClauses.push('updated_at = ?');
+    values.push(Date.now());
+    values.push(invoiceId);
+
+    this.db.run(`UPDATE invoices SET ${setClauses.join(', ')} WHERE id = ?`, values);
+
+    this.saveToFile();
+  }
+
+  async getInvoicesByMerchant(merchantId: string, status?: string): Promise<InvoiceRecord[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = status
+      ? `SELECT * FROM invoices WHERE merchant_id = ? AND status = ? ORDER BY created_at DESC`
+      : `SELECT * FROM invoices WHERE merchant_id = ? ORDER BY created_at DESC`;
+
+    const params = status ? [merchantId, status] : [merchantId];
+    const result = this.db.exec(query, params);
+
+    if (result.length === 0) return [];
+
+    return result[0].values.map((row) => {
+      const mapped = this.mapRow(result[0].columns, row);
+      return this.mapInvoiceRow(mapped);
+    });
+  }
+
+  private mapInvoiceRow(row: Record<string, any>): InvoiceRecord {
+    return {
+      id: row.id,
+      merchantId: row.merchant_id,
+      orderId: row.order_id || undefined,
+      settleMint: row.settle_mint,
+      amountOut: row.amount_out,
+      policyId: row.policy_id || undefined,
+      status: row.status,
+      idempotencyKey: row.idempotency_key || undefined,
+      payerPublicKey: row.payer_public_key || undefined,
+      reservedUntil: row.reserved_until ? Number(row.reserved_until) : undefined,
+      expiresAt: Number(row.expires_at),
+      paidAt: row.paid_at ? Number(row.paid_at) : undefined,
+      txSignature: row.tx_signature || undefined,
+      createdAt: Number(row.created_at),
+      updatedAt: Number(row.updated_at),
+    };
+  }
+
+  // ---------- Payment Quote Methods ----------
+
+  async savePaymentQuote(quote: PaymentQuoteRecord): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    this.db.run(
+      `INSERT INTO payment_quotes (id, invoice_id, payer, pay_mint, plan_json, risk_json, fees_json, requires_gasless, ttl_ms, expires_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        quote.id,
+        quote.invoiceId,
+        quote.payer,
+        quote.payMint,
+        quote.planJson,
+        quote.riskJson,
+        quote.feesJson || null,
+        quote.requiresGasless ? 1 : 0,
+        quote.ttlMs,
+        quote.expiresAt,
+        quote.createdAt,
+      ]
+    );
+
+    this.saveToFile();
+  }
+
+  async getPaymentQuote(quoteId: string): Promise<PaymentQuoteRecord | undefined> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = this.db.exec(`SELECT * FROM payment_quotes WHERE id = ?`, [quoteId]);
+
+    if (result.length === 0 || result[0].values.length === 0) return undefined;
+
+    const row = this.mapRow(result[0].columns, result[0].values[0]);
+    return {
+      id: row.id,
+      invoiceId: row.invoice_id,
+      payer: row.payer,
+      payMint: row.pay_mint,
+      planJson: row.plan_json,
+      riskJson: row.risk_json,
+      feesJson: row.fees_json || undefined,
+      requiresGasless: Boolean(row.requires_gasless),
+      ttlMs: Number(row.ttl_ms),
+      expiresAt: Number(row.expires_at),
+      createdAt: Number(row.created_at),
+    };
+  }
+
+  // ---------- Payment Attempt Methods ----------
+
+  async savePaymentAttempt(attempt: PaymentAttemptRecord): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    this.db.run(
+      `INSERT INTO payment_attempts (invoice_id, quote_id, attempt_no, event_type, mode, signature, status, error_code, error_message, metadata_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        attempt.invoiceId,
+        attempt.quoteId || null,
+        attempt.attemptNo,
+        attempt.eventType,
+        attempt.mode || null,
+        attempt.signature || null,
+        attempt.status || null,
+        attempt.errorCode || null,
+        attempt.errorMessage || null,
+        attempt.metadataJson || null,
+        attempt.createdAt,
+      ]
+    );
+
+    this.saveToFile();
+  }
+
+  async getPaymentAttempts(invoiceId: string): Promise<PaymentAttemptRecord[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = this.db.exec(
+      `SELECT * FROM payment_attempts WHERE invoice_id = ? ORDER BY created_at ASC`,
+      [invoiceId]
+    );
+
+    if (result.length === 0) return [];
+
+    return result[0].values.map((row) => {
+      const mapped = this.mapRow(result[0].columns, row);
+      return {
+        id: mapped.id ? Number(mapped.id) : undefined,
+        invoiceId: mapped.invoice_id,
+        quoteId: mapped.quote_id || undefined,
+        attemptNo: Number(mapped.attempt_no),
+        eventType: mapped.event_type as PaymentAttemptEventType,
+        mode: mapped.mode as 'normal' | 'gasless' | undefined,
+        signature: mapped.signature || undefined,
+        status: mapped.status || undefined,
+        errorCode: mapped.error_code || undefined,
+        errorMessage: mapped.error_message || undefined,
+        metadataJson: mapped.metadata_json || undefined,
+        createdAt: Number(mapped.created_at),
+      };
+    });
+  }
+
+  // ---------- Attestation Methods ----------
+
+  async saveAttestation(attestation: AttestationRecord): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    this.db.run(
+      `INSERT INTO attestations (id, invoice_id, policy_hash, payload_json, planned_json, actual_json, signer_pubkey, signature, verification_url, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        attestation.id,
+        attestation.invoiceId,
+        attestation.policyHash,
+        attestation.payloadJson,
+        attestation.plannedJson,
+        attestation.actualJson,
+        attestation.signerPubkey,
+        attestation.signature,
+        attestation.verificationUrl || null,
+        attestation.createdAt,
+      ]
+    );
+
+    this.saveToFile();
+  }
+
+  async getAttestation(attestationId: string): Promise<AttestationRecord | undefined> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = this.db.exec(`SELECT * FROM attestations WHERE id = ?`, [attestationId]);
+
+    if (result.length === 0 || result[0].values.length === 0) return undefined;
+
+    const row = this.mapRow(result[0].columns, result[0].values[0]);
+    return this.mapAttestationRow(row);
+  }
+
+  async getAttestationByInvoice(invoiceId: string): Promise<AttestationRecord | undefined> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = this.db.exec(`SELECT * FROM attestations WHERE invoice_id = ?`, [invoiceId]);
+
+    if (result.length === 0 || result[0].values.length === 0) return undefined;
+
+    const row = this.mapRow(result[0].columns, result[0].values[0]);
+    return this.mapAttestationRow(row);
+  }
+
+  private mapAttestationRow(row: Record<string, any>): AttestationRecord {
+    return {
+      id: row.id,
+      invoiceId: row.invoice_id,
+      policyHash: row.policy_hash,
+      payloadJson: row.payload_json,
+      plannedJson: row.planned_json,
+      actualJson: row.actual_json,
+      signerPubkey: row.signer_pubkey,
+      signature: row.signature,
+      verificationUrl: row.verification_url || undefined,
+      createdAt: Number(row.created_at),
+    };
+  }
+
+  // ---------- Relayer Submission Methods ----------
+
+  async saveRelayerSubmission(submission: RelayerSubmissionRecord): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    this.db.run(
+      `INSERT INTO relayer_submissions (id, invoice_id, payer, signed_tx_hash, relayer_fee_lamports, status, signature, error, submitted_at, confirmed_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        submission.id,
+        submission.invoiceId,
+        submission.payer,
+        submission.signedTxHash,
+        submission.relayerFeeLamports || null,
+        submission.status,
+        submission.signature || null,
+        submission.error || null,
+        submission.submittedAt,
+        submission.confirmedAt || null,
+        submission.createdAt,
+      ]
+    );
+
+    this.saveToFile();
+  }
+
+  async updateRelayerSubmission(
+    submissionId: string,
+    updates: Partial<RelayerSubmissionRecord>
+  ): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const setClauses: string[] = [];
+    const values: any[] = [];
+
+    if (updates.status !== undefined) {
+      setClauses.push('status = ?');
+      values.push(updates.status);
+    }
+    if (updates.signature !== undefined) {
+      setClauses.push('signature = ?');
+      values.push(updates.signature);
+    }
+    if (updates.error !== undefined) {
+      setClauses.push('error = ?');
+      values.push(updates.error);
+    }
+    if (updates.confirmedAt !== undefined) {
+      setClauses.push('confirmed_at = ?');
+      values.push(updates.confirmedAt);
+    }
+
+    values.push(submissionId);
+
+    this.db.run(`UPDATE relayer_submissions SET ${setClauses.join(', ')} WHERE id = ?`, values);
+
+    this.saveToFile();
+  }
+
+  async getRelayerSubmission(submissionId: string): Promise<RelayerSubmissionRecord | undefined> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = this.db.exec(`SELECT * FROM relayer_submissions WHERE id = ?`, [submissionId]);
+
+    if (result.length === 0 || result[0].values.length === 0) return undefined;
+
+    const row = this.mapRow(result[0].columns, result[0].values[0]);
+    return {
+      id: row.id,
+      invoiceId: row.invoice_id,
+      payer: row.payer,
+      signedTxHash: row.signed_tx_hash,
+      relayerFeeLamports: row.relayer_fee_lamports ? Number(row.relayer_fee_lamports) : undefined,
+      status: row.status,
+      signature: row.signature || undefined,
+      error: row.error || undefined,
+      submittedAt: Number(row.submitted_at),
+      confirmedAt: row.confirmed_at ? Number(row.confirmed_at) : undefined,
+      createdAt: Number(row.created_at),
+    };
+  }
+
+  // ---------- Helper Methods ----------
+
+  private mapRow(columns: string[], values: any[]): Record<string, any> {
+    const row: Record<string, any> = {};
+    columns.forEach((col, idx) => {
+      row[col] = values[idx];
+    });
+    return row;
   }
 }

@@ -2,9 +2,10 @@
  * Payment Service
  *
  * Handles "pay any token → USDC" payment processing.
+ * V1 enhancements: ExactOut fallback, gasless support, policy attestation.
  */
 
-import { PublicKey, Connection } from '@solana/web3.js';
+import { PublicKey, Connection, Keypair } from '@solana/web3.js';
 import { v4 as uuidv4 } from 'uuid';
 
 import { config } from '../config/index.js';
@@ -12,7 +13,10 @@ import { KNOWN_TOKENS } from '../config/risk-policies.js';
 import { logger } from '../utils/logger.js';
 import { jupiterService } from './jupiterService.js';
 import { flowMintOnChainService } from './flowMintOnChain.js';
-import { DatabaseService } from '../db/database.js';
+import { DatabaseService, PolicyRecord, PaymentQuoteRecord } from '../db/database.js';
+import { InvoiceService } from './invoiceService.js';
+import { AttestationService, PlannedExecution, ActualExecution, RouteHop } from './attestationService.js';
+import { RelayerService } from './relayerService.js';
 
 /**
  * Payment request
@@ -113,6 +117,42 @@ export interface PaymentRecord {
 }
 
 /**
+ * Quote mode - ExactOut preferred, fallback to ExactIn+refund
+ */
+export type QuoteMode = 'ExactOut' | 'ExactIn';
+
+/**
+ * Extended payment quote with fallback info
+ */
+export interface ExtendedPaymentQuote extends PaymentQuote {
+  /** Quote mode used */
+  mode: QuoteMode;
+  /** If ExactIn, the refund amount to merchant */
+  refundAmount?: string;
+  /** Risk assessment */
+  risk: {
+    priceImpactBps: number;
+    slippageBps: number;
+    hops: number;
+    warnings: string[];
+  };
+  /** Gasless eligible */
+  gaslessEligible?: boolean;
+  /** TTL in milliseconds */
+  ttlMs: number;
+}
+
+/**
+ * Invoice payment request (V1)
+ */
+export interface InvoicePaymentRequest {
+  invoiceId: string;
+  payerPublicKey: string;
+  payMint: string;
+  useGasless?: boolean;
+}
+
+/**
  * Payment Service
  *
  * Manages payment processing with token conversion to USDC.
@@ -121,6 +161,16 @@ export class PaymentService {
   private readonly log = logger.child({ service: 'PaymentService' });
   private readonly connection: Connection;
   private readonly usdcMint: string;
+  private invoiceService?: InvoiceService;
+  private attestationService?: AttestationService;
+  private relayerService?: RelayerService;
+  private signerKeypair?: Keypair;
+
+  // V1 Constants
+  private readonly QUOTE_TTL_MS = 15000; // 15 seconds
+  private readonly MAX_HOPS = 4;
+  private readonly MAX_PRICE_IMPACT_BPS = 300; // 3%
+  private readonly DEFAULT_SLIPPAGE_BPS = 50; // 0.5%
 
   constructor(private readonly db: DatabaseService) {
     this.connection = new Connection(config.solana.rpcUrl, config.solana.commitment);
@@ -128,6 +178,312 @@ export class PaymentService {
       config.solana.network === 'mainnet-beta' ? KNOWN_TOKENS.USDC : KNOWN_TOKENS.USDC;
 
     this.log.info('PaymentService initialized');
+  }
+
+  /**
+   * Set V1 services
+   */
+  setServices(params: {
+    invoiceService?: InvoiceService;
+    attestationService?: AttestationService;
+    relayerService?: RelayerService;
+    signerKeypair?: Keypair;
+  }): void {
+    this.invoiceService = params.invoiceService;
+    this.attestationService = params.attestationService;
+    this.relayerService = params.relayerService;
+    this.signerKeypair = params.signerKeypair;
+  }
+
+  /**
+   * Get extended payment quote with ExactOut fallback
+   *
+   * Strategy:
+   * 1. Try ExactOut first (merchant gets exact amount)
+   * 2. If ExactOut fails/unavailable, use ExactIn with refund logic
+   */
+  async getExtendedQuote(
+    payerPublicKey: string,
+    payMint: string,
+    settleMint: string,
+    amountOut: string,
+    policy?: PolicyRecord
+  ): Promise<ExtendedPaymentQuote> {
+    const quoteId = uuidv4();
+    const now = Date.now();
+
+    this.log.info(
+      { quoteId, payer: payerPublicKey, payMint, settleMint, amountOut },
+      'Getting extended payment quote'
+    );
+
+    // Check gasless eligibility
+    let gaslessEligible = false;
+    if (this.relayerService) {
+      const eligibility = await this.relayerService.checkGaslessEligibility(
+        payerPublicKey,
+        payMint
+      );
+      gaslessEligible = eligibility.eligible;
+    }
+
+    // Direct transfer if same mint
+    if (payMint === settleMint) {
+      return {
+        quoteId,
+        usdcAmount: amountOut,
+        inputToken: payMint,
+        estimatedInputAmount: amountOut,
+        maxInputAmount: amountOut,
+        priceImpactPct: '0',
+        expiresAt: now + this.QUOTE_TTL_MS,
+        route: { steps: 0, labels: ['Direct Transfer'] },
+        mode: 'ExactOut',
+        risk: {
+          priceImpactBps: 0,
+          slippageBps: 0,
+          hops: 0,
+          warnings: [],
+        },
+        gaslessEligible,
+        ttlMs: this.QUOTE_TTL_MS,
+      };
+    }
+
+    // Try ExactOut first
+    try {
+      const exactOutQuote = await jupiterService.quoteSwap({
+        inputMint: payMint,
+        outputMint: settleMint,
+        amount: amountOut,
+        slippageBps: policy?.maxSlippageBps || this.DEFAULT_SLIPPAGE_BPS,
+        swapMode: 'ExactOut',
+      });
+
+      const priceImpactBps = Math.round(parseFloat(exactOutQuote.priceImpactPct) * 100);
+      const hops = exactOutQuote.routePlan.length;
+
+      // Check against policy limits
+      const maxPriceImpact = policy?.maxPriceImpactBps || this.MAX_PRICE_IMPACT_BPS;
+      const maxHops = policy?.maxHops || this.MAX_HOPS;
+
+      const warnings: string[] = [];
+      if (priceImpactBps > maxPriceImpact) {
+        warnings.push(`Price impact ${priceImpactBps / 100}% exceeds limit`);
+      }
+      if (hops > maxHops) {
+        warnings.push(`Route has ${hops} hops, exceeds max ${maxHops}`);
+      }
+
+      // Calculate max input with buffer
+      const estimatedInput = BigInt(exactOutQuote.inAmount);
+      const slippageMultiplier = 1.01;
+      const maxInput = BigInt(Math.ceil(Number(estimatedInput) * slippageMultiplier));
+
+      return {
+        quoteId,
+        usdcAmount: amountOut,
+        inputToken: payMint,
+        estimatedInputAmount: exactOutQuote.inAmount,
+        maxInputAmount: maxInput.toString(),
+        priceImpactPct: exactOutQuote.priceImpactPct,
+        expiresAt: now + this.QUOTE_TTL_MS,
+        route: {
+          steps: hops,
+          labels: exactOutQuote.routePlan.map((step) => step.swapInfo.label),
+        },
+        mode: 'ExactOut',
+        risk: {
+          priceImpactBps,
+          slippageBps: policy?.maxSlippageBps || this.DEFAULT_SLIPPAGE_BPS,
+          hops,
+          warnings,
+        },
+        gaslessEligible,
+        ttlMs: this.QUOTE_TTL_MS,
+      };
+    } catch (exactOutError) {
+      this.log.warn({ error: exactOutError }, 'ExactOut quote failed, trying ExactIn fallback');
+    }
+
+    // Fallback: ExactIn mode with refund
+    // Estimate input amount needed (add 2% buffer for safety)
+    const estimatedInputForExactIn = await this.estimateInputAmount(
+      payMint,
+      settleMint,
+      amountOut
+    );
+
+    const exactInQuote = await jupiterService.quoteSwap({
+      inputMint: payMint,
+      outputMint: settleMint,
+      amount: estimatedInputForExactIn,
+      slippageBps: policy?.maxSlippageBps || this.DEFAULT_SLIPPAGE_BPS,
+      swapMode: 'ExactIn',
+    });
+
+    const priceImpactBps = Math.round(parseFloat(exactInQuote.priceImpactPct) * 100);
+    const hops = exactInQuote.routePlan.length;
+
+    // Calculate refund (output - required)
+    const outputAmount = BigInt(exactInQuote.outAmount);
+    const requiredAmount = BigInt(amountOut);
+    const refundAmount = outputAmount > requiredAmount ? (outputAmount - requiredAmount).toString() : '0';
+
+    const warnings: string[] = ['Using ExactIn mode with potential refund'];
+    if (refundAmount !== '0') {
+      warnings.push(`Refund of ~${refundAmount} ${settleMint.slice(0, 8)}... will be returned`);
+    }
+
+    return {
+      quoteId,
+      usdcAmount: amountOut,
+      inputToken: payMint,
+      estimatedInputAmount: exactInQuote.inAmount,
+      maxInputAmount: exactInQuote.inAmount,
+      priceImpactPct: exactInQuote.priceImpactPct,
+      expiresAt: now + this.QUOTE_TTL_MS,
+      route: {
+        steps: hops,
+        labels: exactInQuote.routePlan.map((step) => step.swapInfo.label),
+      },
+      mode: 'ExactIn',
+      refundAmount,
+      risk: {
+        priceImpactBps,
+        slippageBps: policy?.maxSlippageBps || this.DEFAULT_SLIPPAGE_BPS,
+        hops,
+        warnings,
+      },
+      gaslessEligible,
+      ttlMs: this.QUOTE_TTL_MS,
+    };
+  }
+
+  /**
+   * Estimate input amount for ExactIn fallback
+   */
+  private async estimateInputAmount(
+    payMint: string,
+    settleMint: string,
+    targetOutput: string
+  ): Promise<string> {
+    try {
+      // Get a rough quote to estimate rate
+      const testAmount = '1000000'; // 1 USDC worth
+      const testQuote = await jupiterService.quoteSwap({
+        inputMint: payMint,
+        outputMint: settleMint,
+        amount: testAmount,
+        slippageBps: 100,
+        swapMode: 'ExactIn',
+      });
+
+      // Calculate rate and estimate input
+      const inputPerOutput = Number(testQuote.inAmount) / Number(testQuote.outAmount);
+      const estimatedInput = Math.ceil(Number(targetOutput) * inputPerOutput * 1.02); // 2% buffer
+
+      return estimatedInput.toString();
+    } catch {
+      // Fallback: assume 1:1 with buffer
+      return (BigInt(targetOutput) * 102n / 100n).toString();
+    }
+  }
+
+  /**
+   * Save quote to database for tracking
+   */
+  async saveQuote(
+    quote: ExtendedPaymentQuote,
+    invoiceId: string,
+    payer: string
+  ): Promise<void> {
+    const quoteRecord: PaymentQuoteRecord = {
+      id: quote.quoteId,
+      invoiceId,
+      payer,
+      payMint: quote.inputToken,
+      planJson: JSON.stringify({
+        mode: quote.mode,
+        route: quote.route,
+        estimatedInput: quote.estimatedInputAmount,
+        maxInput: quote.maxInputAmount,
+      }),
+      riskJson: JSON.stringify(quote.risk),
+      requiresGasless: quote.gaslessEligible || false,
+      ttlMs: quote.ttlMs,
+      expiresAt: quote.expiresAt,
+      createdAt: Date.now(),
+    };
+
+    await this.db.savePaymentQuote(quoteRecord);
+  }
+
+  /**
+   * Build route hops from Jupiter quote for attestation
+   */
+  private buildRouteHops(jupiterQuote: any): RouteHop[] {
+    return jupiterQuote.routePlan.map((step: any) => ({
+      dex: step.swapInfo.label,
+      inputMint: step.swapInfo.inputMint,
+      outputMint: step.swapInfo.outputMint,
+      inputAmount: step.swapInfo.inAmount,
+      outputAmount: step.swapInfo.outAmount,
+    }));
+  }
+
+  /**
+   * Create attestation for a completed payment
+   */
+  async createPaymentAttestation(params: {
+    invoiceId: string;
+    policy: PolicyRecord;
+    quote: ExtendedPaymentQuote;
+    txSignature: string;
+    slot: number;
+    actualAmountIn: string;
+    actualAmountOut: string;
+  }): Promise<string | undefined> {
+    if (!this.attestationService || !this.signerKeypair) {
+      this.log.warn('Attestation service not configured');
+      return undefined;
+    }
+
+    const planned: PlannedExecution = {
+      payMint: params.quote.inputToken,
+      settleMint: this.usdcMint,
+      amountIn: params.quote.estimatedInputAmount,
+      amountOut: params.quote.usdcAmount,
+      route: [], // Would be populated from detailed quote
+      priceImpactBps: params.quote.risk.priceImpactBps,
+      slippageBps: params.quote.risk.slippageBps,
+      gasless: params.quote.gaslessEligible || false,
+    };
+
+    const actual: ActualExecution = {
+      signature: params.txSignature,
+      slot: params.slot,
+      amountInActual: params.actualAmountIn,
+      amountOutActual: params.actualAmountOut,
+      feesPaid: '5000', // Placeholder
+      success: true,
+      timestamp: Date.now(),
+    };
+
+    try {
+      const attestation = await this.attestationService.createAttestation({
+        invoiceId: params.invoiceId,
+        policy: params.policy,
+        planned,
+        actual,
+        signerKeypair: this.signerKeypair,
+      });
+
+      return attestation.id;
+    } catch (error) {
+      this.log.error({ error }, 'Failed to create attestation');
+      return undefined;
+    }
   }
 
   /**

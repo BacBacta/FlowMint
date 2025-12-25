@@ -22,8 +22,8 @@ async function main(): Promise<void> {
   await db.initialize();
   logger.info('Database initialized');
 
-  // Create Express app
-  const app = createApp(db);
+  // Create Express app (async for PortfolioPay initialization)
+  const app = await createApp(db);
 
   // Initialize intent scheduler for DCA and stop-loss
   const scheduler = new IntentScheduler(db);

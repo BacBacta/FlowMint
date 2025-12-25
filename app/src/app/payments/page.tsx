@@ -437,13 +437,15 @@ function PaymentsContent() {
                   {/* How it works */}
                   <div className="bg-primary-50 dark:bg-primary-900/20 rounded-lg p-4">
                     <h3 className="text-primary-800 dark:text-primary-200 font-medium">
-                      How it works
+                      PortfolioPay V1 Features
                     </h3>
                     <ul className="text-primary-700 dark:text-primary-300 mt-2 space-y-1 text-sm">
                       <li>• Pay using any token in your wallet</li>
                       <li>• We automatically swap to USDC via Jupiter</li>
-                      <li>• Merchant receives exact USDC amount</li>
-                      <li>• Fast, low-cost transactions on Solana</li>
+                      <li>• Merchant receives exact USDC amount (ExactOut)</li>
+                      <li>• <span className="font-semibold text-green-600 dark:text-green-400">Gasless</span>: Pay with 0 SOL (USDC/USDT only)</li>
+                      <li>• <span className="font-semibold text-blue-600 dark:text-blue-400">Attestation</span>: Cryptographic proof of policy compliance</li>
+                      <li>• Fast, MEV-protected transactions on Solana</li>
                     </ul>
                   </div>
 

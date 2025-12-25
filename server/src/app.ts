@@ -25,6 +25,7 @@ import { createDelegationRoutes } from './api/routes/delegation.js';
 import { createJupiterOrdersRoutes } from './api/routes/jupiterOrders.js';
 import { createMEVRoutes } from './api/routes/mev.js';
 import { createAdvancedOrdersRoutes } from './api/routes/advancedOrders.js';
+import { createPortfolioPayRouter, initPortfolioPayServices } from './routes/portfoliopay.js';
 import metricsRouter from './api/routes/metrics.js';
 import swaggerRouter from './api/swagger.js';
 
@@ -34,8 +35,12 @@ import swaggerRouter from './api/swagger.js';
  * @param db - Database service instance
  * @returns Configured Express application
  */
-export function createApp(db: DatabaseService): Express {
+export async function createApp(db: DatabaseService): Promise<Express> {
   const app = express();
+
+  // Initialize PortfolioPay V1 services
+  await initPortfolioPayServices(db);
+  logger.info('PortfolioPay V1 services initialized');
 
   // Security middleware
   app.use(helmet());
@@ -92,6 +97,9 @@ export function createApp(db: DatabaseService): Express {
   apiRouter.use('/jupiter', createJupiterOrdersRoutes());
   apiRouter.use('/mev', createMEVRoutes(db));
   apiRouter.use('/orders/advanced', createAdvancedOrdersRoutes());
+
+  // PortfolioPay V1 routes
+  apiRouter.use('/', createPortfolioPayRouter());
 
   app.use('/api/v1', apiRouter);
 
