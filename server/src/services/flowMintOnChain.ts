@@ -9,14 +9,14 @@ import { Buffer } from 'buffer';
 
 import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import {
+  AccountMeta,
   Connection,
   PublicKey,
+  SYSVAR_RENT_PUBKEY,
+  SystemProgram,
   TransactionInstruction,
   TransactionMessage,
   VersionedTransaction,
-  AccountMeta,
-  SystemProgram,
-  SYSVAR_CLOCK_PUBKEY,
 } from '@solana/web3.js';
 
 import { config } from '../config/index.js';
@@ -137,6 +137,13 @@ export class FlowMintOnChainService {
   getTempUsdcAccountPDA(payer: PublicKey): [PublicKey, number] {
     return PublicKey.findProgramAddressSync(
       [Buffer.from('temp_usdc'), payer.toBuffer()],
+      FLOWMINT_PROGRAM_ID
+    );
+  }
+
+  getFeeVaultUsdcAccountPDA(usdcMint: PublicKey): [PublicKey, number] {
+    return PublicKey.findProgramAddressSync(
+      [Buffer.from('fee_vault'), usdcMint.toBuffer()],
       FLOWMINT_PROGRAM_ID
     );
   }
@@ -287,6 +294,7 @@ export class FlowMintOnChainService {
     const [paymentRecordPDA] = this.getPaymentRecordPDA(params.payer, params.merchant, timestamp);
     const [payerStatsPDA] = this.getUserStatsPDA(params.payer);
     const [tempUsdcAccountPDA] = this.getTempUsdcAccountPDA(params.payer);
+  const [feeVaultUsdcAccountPDA] = this.getFeeVaultUsdcAccountPDA(params.usdcMint);
 
     // Build instruction data
     const memoBytes = params.memo ? Buffer.from(params.memo.slice(0, 64)) : Buffer.alloc(0);
@@ -310,12 +318,14 @@ export class FlowMintOnChainService {
       { pubkey: params.merchantUsdcAccount, isSigner: false, isWritable: true },
       { pubkey: params.merchant, isSigner: false, isWritable: false },
       { pubkey: params.usdcMint, isSigner: false, isWritable: false },
+      { pubkey: feeVaultUsdcAccountPDA, isSigner: false, isWritable: true },
       { pubkey: tempUsdcAccountPDA, isSigner: false, isWritable: true },
       { pubkey: paymentRecordPDA, isSigner: false, isWritable: true },
       { pubkey: payerStatsPDA, isSigner: false, isWritable: true },
       { pubkey: params.jupiterProgram, isSigner: false, isWritable: false },
       { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
     ];
 
     // Add Jupiter accounts as remaining accounts

@@ -129,12 +129,16 @@ pub mod flowmint {
         new_default_slippage_bps: Option<u16>,
         new_protected_slippage_bps: Option<u16>,
         new_max_price_impact_bps: Option<u16>,
+        new_protocol_fee_bps: Option<u16>,
+        new_treasury: Option<Pubkey>,
     ) -> Result<()> {
         instructions::admin::update_config_handler(
             ctx,
             new_default_slippage_bps,
             new_protected_slippage_bps,
             new_max_price_impact_bps,
+            new_protocol_fee_bps,
+            new_treasury,
         )
     }
 
@@ -146,5 +150,10 @@ pub mod flowmint {
     /// * `enabled` - Whether protected mode should be enabled globally
     pub fn toggle_protected_mode(ctx: Context<UpdateConfig>, enabled: bool) -> Result<()> {
         instructions::admin::toggle_protected_mode_handler(ctx, enabled)
+    }
+
+    /// Withdraw accumulated protocol fees (USDC) from the on-chain FeeVault to the configured treasury.
+    pub fn withdraw_fees(ctx: Context<WithdrawFees>) -> Result<()> {
+        instructions::admin::withdraw_fees_handler(ctx)
     }
 }

@@ -79,9 +79,23 @@ pub struct PayAnyToken<'info> {
     /// CHECK: Validated by token account constraints
     pub usdc_mint: AccountInfo<'info>,
 
+    /// Protocol fee vault (USDC) - PDA token account owned by the config PDA
+    #[account(
+        init_if_needed,
+        payer = payer,
+        token::mint = usdc_mint,
+        token::authority = config,
+        seeds = [b"fee_vault", usdc_mint.key().as_ref()],
+        bump,
+    )]
+    pub fee_vault_usdc_account: Account<'info, TokenAccount>,
+
     /// Temporary PDA USDC account to receive swap output
     #[account(
-        mut,
+        init_if_needed,
+        payer = payer,
+        token::mint = usdc_mint,
+        token::authority = config,
         seeds = [b"temp_usdc", payer.key().as_ref()],
         bump,
     )]
@@ -121,6 +135,23 @@ pub struct PayAnyToken<'info> {
 
     /// System program
     pub system_program: Program<'info, System>,
+
+    /// Rent sysvar (required for token account init)
+    pub rent: Sysvar<'info, Rent>,
+}
+
+fn compute_protocol_fee(exact_usdc_out: u64, protocol_fee_bps: u16) -> Result<u64> {
+    if protocol_fee_bps == 0 {
+        return Ok(0);
+    }
+
+    let fee = (exact_usdc_out as u128)
+        .checked_mul(protocol_fee_bps as u128)
+        .ok_or(FlowMintError::MathOverflow)?
+        .checked_div(10_000)
+        .ok_or(FlowMintError::MathOverflow)?;
+
+    Ok(fee as u64)
 }
 
 /// Execute a payment by converting any token to USDC
@@ -171,13 +202,39 @@ pub fn pay_any_token_handler<'info>(
     // ============================================================
     let is_direct_usdc = ctx.accounts.input_mint.key() == ctx.accounts.usdc_mint.key();
     
+    let protocol_fee = compute_protocol_fee(exact_usdc_out, ctx.accounts.config.protocol_fee_bps)?;
+    let required_usdc_out = exact_usdc_out
+        .checked_add(protocol_fee)
+        .ok_or(FlowMintError::MathOverflow)?;
+
     let actual_amount_in: u64;
     let actual_usdc_received: u64;
 
     if is_direct_usdc {
         // Direct USDC transfer - no swap needed
-        actual_amount_in = exact_usdc_out;
-        actual_usdc_received = exact_usdc_out;
+        // Payer covers merchant amount + protocol fee (if enabled)
+        require!(amount_in >= required_usdc_out, FlowMintError::AmountTooSmall);
+        actual_amount_in = required_usdc_out;
+        actual_usdc_received = required_usdc_out;
+
+        // Ensure the payer has enough USDC to cover merchant + fee
+        require!(
+            payer_input_account.amount >= required_usdc_out,
+            FlowMintError::InsufficientBalance
+        );
+
+        // Transfer protocol fee to FeeVault (if any)
+        if protocol_fee > 0 {
+            let fee_ctx = CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.payer_input_account.to_account_info(),
+                    to: ctx.accounts.fee_vault_usdc_account.to_account_info(),
+                    authority: ctx.accounts.payer.to_account_info(),
+                },
+            );
+            token::transfer(fee_ctx, protocol_fee)?;
+        }
 
         // Transfer USDC directly from payer to merchant
         let transfer_ctx = CpiContext::new(
@@ -205,7 +262,7 @@ pub fn pay_any_token_handler<'info>(
             &ctx.accounts.input_mint.key(),
             &ctx.accounts.usdc_mint.key(),
             amount_in,
-            exact_usdc_out,
+            required_usdc_out,
             ctx.accounts.config.default_slippage_bps, // Use protocol default for payments
         )?;
 
@@ -235,9 +292,9 @@ pub fn pay_any_token_handler<'info>(
             .checked_sub(temp_usdc_balance_before)
             .ok_or(FlowMintError::MathOverflow)?;
 
-        // Verify we received at least the required USDC
+        // Verify we received at least merchant + protocol fee
         require!(
-            actual_usdc_received >= exact_usdc_out,
+            actual_usdc_received >= required_usdc_out,
             FlowMintError::InsufficientOutputAmount
         );
 
@@ -250,20 +307,32 @@ pub fn pay_any_token_handler<'info>(
         // ============================================================
         // Step 5: Transfer exact USDC amount to merchant
         // ============================================================
-        let payer_key = payer.key();
-        let seeds = &[
-            b"temp_usdc".as_ref(),
-            payer_key.as_ref(),
-            &[ctx.bumps.temp_usdc_account],
-        ];
-        let signer_seeds = &[&seeds[..]];
+        // Config PDA is the token authority for temp_usdc_account and fee_vault_usdc_account.
+        let config_seeds = &[b"config".as_ref(), &[ctx.accounts.config.bump]];
+        let signer_seeds = &[&config_seeds[..]];
+
+        // ============================================================
+        // Step 5: Transfer protocol fee to FeeVault (if any)
+        // ============================================================
+        if protocol_fee > 0 {
+            let fee_ctx = CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.temp_usdc_account.to_account_info(),
+                    to: ctx.accounts.fee_vault_usdc_account.to_account_info(),
+                    authority: ctx.accounts.config.to_account_info(),
+                },
+                signer_seeds,
+            );
+            token::transfer(fee_ctx, protocol_fee)?;
+        }
 
         let transfer_to_merchant_ctx = CpiContext::new_with_signer(
             ctx.accounts.token_program.to_account_info(),
             Transfer {
                 from: ctx.accounts.temp_usdc_account.to_account_info(),
                 to: ctx.accounts.merchant_usdc_account.to_account_info(),
-                authority: ctx.accounts.temp_usdc_account.to_account_info(),
+                authority: ctx.accounts.config.to_account_info(),
             },
             signer_seeds,
         );
@@ -272,14 +341,14 @@ pub fn pay_any_token_handler<'info>(
         // ============================================================
         // Step 6: Refund excess USDC to payer (if any)
         // ============================================================
-        let excess_usdc = actual_usdc_received.saturating_sub(exact_usdc_out);
+        let excess_usdc = actual_usdc_received.saturating_sub(required_usdc_out);
         if excess_usdc > 0 {
             let refund_ctx = CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
                     from: ctx.accounts.temp_usdc_account.to_account_info(),
                     to: ctx.accounts.payer_usdc_account.to_account_info(),
-                    authority: ctx.accounts.temp_usdc_account.to_account_info(),
+                    authority: ctx.accounts.config.to_account_info(),
                 },
                 signer_seeds,
             );
