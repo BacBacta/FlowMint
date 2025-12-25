@@ -16,7 +16,7 @@ COPY server/package.json ./server/
 
 # Install dependencies (disable husky hooks)
 ENV HUSKY=0
-RUN pnpm install --frozen-lockfile --filter server
+RUN pnpm install --frozen-lockfile --filter server --ignore-scripts
 
 # Copy server source code
 COPY server/tsconfig.json ./server/
@@ -48,7 +48,7 @@ COPY server/package.json ./server/
 
 # Install production dependencies only (disable husky hooks)
 ENV HUSKY=0
-RUN pnpm install --frozen-lockfile --prod --filter server
+RUN pnpm install --frozen-lockfile --prod --filter server --ignore-scripts
 
 WORKDIR /app/server
 
