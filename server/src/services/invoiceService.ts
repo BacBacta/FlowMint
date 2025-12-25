@@ -236,7 +236,7 @@ export class InvoiceService {
    * List invoices for a merchant
    */
   async listMerchantInvoices(merchantId: string, status?: string): Promise<InvoiceRecord[]> {
-    return this.db.getInvoicesByMerchant(merchantId, status);
+    return this.db.getInvoicesByMerchant(merchantId, { status });
   }
 
   /**
