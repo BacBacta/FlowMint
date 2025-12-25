@@ -59,7 +59,12 @@ export class MetricsService {
     this.registry = new Registry();
 
     // Collect default Node.js metrics (CPU, memory, event loop, etc.)
-    collectDefaultMetrics({ register: this.registry });
+    // In tests, avoid creating background timers that keep Jest alive.
+    if (process.env.NODE_ENV !== 'test') {
+      const maybeInterval = collectDefaultMetrics({ register: this.registry });
+      // prom-client may return an interval handle depending on version
+      (maybeInterval as any)?.unref?.();
+    }
 
     // ==========================================================================
     // Counters

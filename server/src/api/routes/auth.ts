@@ -27,14 +27,19 @@ const log = logger.child({ service: 'AuthRoutes' });
 const pendingNonces = new Map<string, { nonce: string; timestamp: number; expiresAt: number }>();
 
 // Clean up expired nonces periodically
-setInterval(() => {
-  const now = Date.now();
-  for (const [publicKey, data] of pendingNonces.entries()) {
-    if (now > data.expiresAt) {
-      pendingNonces.delete(publicKey);
+// Note: Avoid keeping the event loop alive in test runs.
+if (process.env.NODE_ENV !== 'test') {
+  const cleanupInterval = setInterval(() => {
+    const now = Date.now();
+    for (const [publicKey, data] of pendingNonces.entries()) {
+      if (now > data.expiresAt) {
+        pendingNonces.delete(publicKey);
+      }
     }
-  }
-}, 60000);
+  }, 60000);
+  // Don't keep process alive just for housekeeping.
+  cleanupInterval.unref?.();
+}
 
 export function createAuthRoutes(): Router {
   const router = Router();

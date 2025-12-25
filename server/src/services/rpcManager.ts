@@ -177,6 +177,8 @@ export class RpcManager {
       () => this.runHealthChecks(),
       this.config.healthCheckIntervalMs
     );
+    // Don't keep the Node event loop alive solely due to health checks.
+    this.healthCheckInterval.unref?.();
   }
 
   /**

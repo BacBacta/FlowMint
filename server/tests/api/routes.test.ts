@@ -11,7 +11,7 @@ describe('API Routes', () => {
   beforeAll(async () => {
     db = new DatabaseService(':memory:');
     await db.initialize();
-    app = createApp(db);
+    app = await createApp(db);
   });
 
   afterAll(async () => {

@@ -42,3 +42,20 @@ global.console = {
 afterEach(() => {
   jest.clearAllMocks();
 });
+
+// Global teardown - clear all timers and pending handles
+afterAll(async () => {
+  // Clear any remaining timers
+  jest.useRealTimers();
+  
+  // Clear the prom-client registry to stop internal timers
+  try {
+    const { register } = await import('prom-client');
+    register.clear();
+  } catch {
+    // prom-client may not be loaded in all test files
+  }
+  
+  // Small delay to allow pending microtasks to complete
+  await new Promise((resolve) => setImmediate(resolve));
+});

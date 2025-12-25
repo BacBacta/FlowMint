@@ -415,6 +415,301 @@ export function createPortfolioPayRouter(): Router {
   });
 
   /**
+   * POST /api/v1/payments/quote-multi
+   * Get a multi-token split payment quote (V1.5)
+   * Allows paying with up to 2 tokens combined
+   */
+  router.post('/payments/quote-multi', async (req: Request, res: Response) => {
+    try {
+      const {
+        invoiceId,
+        payerPublicKey,
+        payMints,
+        maxLegs = 2,
+        strategy = 'min-risk',
+      } = req.body;
+
+      // Validate inputs
+      if (!invoiceId || !payerPublicKey || !Array.isArray(payMints) || payMints.length === 0) {
+        return res.status(400).json({
+          error: 'invoiceId, payerPublicKey, and payMints[] required',
+        });
+      }
+
+      if (payMints.length > 2) {
+        return res.status(400).json({
+          error: 'Maximum 2 tokens allowed',
+        });
+      }
+
+      if (!['min-risk', 'min-slippage', 'min-failure'].includes(strategy)) {
+        return res.status(400).json({
+          error: 'Invalid strategy. Use: min-risk, min-slippage, or min-failure',
+        });
+      }
+
+      // Validate invoice is payable
+      const validation = await invoiceService.validatePayable(invoiceId, payerPublicKey);
+      if (!validation.valid || !validation.invoice) {
+        return res.status(400).json({ error: validation.error });
+      }
+
+      const invoice = validation.invoice;
+
+      // Check for existing active reservation
+      const existingReservation = await db.getReservationByInvoice(invoiceId);
+      if (existingReservation && existingReservation.status === 'active') {
+        if (existingReservation.payer !== payerPublicKey) {
+          return res.status(409).json({
+            error: 'Invoice is reserved by another payer',
+          });
+        }
+        // Return existing reservation
+        return res.json({
+          reservationId: existingReservation.id,
+          plan: JSON.parse(existingReservation.planJson),
+          expiresAt: existingReservation.expiresAt,
+          status: existingReservation.status,
+        });
+      }
+
+      // Get policy if exists
+      let policy;
+      if (invoice.policyId) {
+        policy = await db.getPolicy(invoice.policyId);
+      }
+
+      // Get planner (lazy init)
+      const { createSplitTenderPlanner } = await import('../services/splitTenderPlanner.js');
+      const connection = new Connection(config.solana.rpcUrl, config.solana.commitment);
+      const planner = createSplitTenderPlanner(connection, db);
+
+      // Get user balances
+      const balances = await planner.getUserBalances(payerPublicKey, payMints);
+
+      // Plan the split payment
+      const planResult = await planner.plan({
+        invoiceId,
+        payerPublicKey,
+        payMints,
+        amountOut: invoice.amountOut,
+        settleMint: invoice.settleMint,
+        strategy: strategy as 'min-risk' | 'min-slippage' | 'min-failure',
+        policy: policy ?? undefined,
+        balances,
+      });
+
+      if (!planResult.success || !planResult.plan) {
+        return res.status(400).json({
+          error: planResult.error || 'Could not plan split payment',
+        });
+      }
+
+      // Create reservation and legs
+      const { reservation, legs } = await planner.createReservation(
+        invoiceId,
+        payerPublicKey,
+        planResult.plan
+      );
+
+      log.info({
+        invoiceId,
+        reservationId: reservation.id,
+        strategy,
+        legsCount: legs.length,
+        totalExpectedUsdc: planResult.plan.totalExpectedUsdcOut,
+      }, 'Multi-token quote generated');
+
+      res.json({
+        reservationId: reservation.id,
+        invoiceId,
+        payer: payerPublicKey,
+        strategy: planResult.plan.strategy,
+        legs: planResult.plan.legs.map((leg, idx) => ({
+          legIndex: idx,
+          payMint: leg.payMint,
+          amountIn: leg.amountIn,
+          expectedUsdcOut: leg.expectedUsdcOut,
+          priceImpactPct: (leg.priceImpactBps / 100).toFixed(2),
+          risk: leg.risk,
+        })),
+        totalAmountIn: planResult.plan.totalAmountIn,
+        totalExpectedUsdcOut: planResult.plan.totalExpectedUsdcOut,
+        settlementAmount: planResult.plan.settlementAmount,
+        refundPolicy: planResult.plan.refundPolicy,
+        aggregateRisk: planResult.plan.aggregateRisk,
+        estimatedDurationMs: planResult.plan.estimatedDurationMs,
+        expiresAt: reservation.expiresAt,
+        status: reservation.status,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      log.error({ error }, 'Failed to get multi-token quote');
+      res.status(500).json({ error: message });
+    }
+  });
+
+  /**
+   * POST /api/v1/payments/execute-leg
+   * Execute a single leg of a split payment (V1.5)
+   */
+  router.post('/payments/execute-leg', async (req: Request, res: Response) => {
+    try {
+      const { reservationId, legIndex, signedTransaction } = req.body;
+
+      if (!reservationId || legIndex === undefined) {
+        return res.status(400).json({
+          error: 'reservationId and legIndex required',
+        });
+      }
+
+      // Get reservation
+      const reservation = await db.getInvoiceReservation(reservationId);
+      if (!reservation) {
+        return res.status(404).json({ error: 'Reservation not found' });
+      }
+
+      if (reservation.status !== 'active') {
+        return res.status(400).json({
+          error: `Reservation is ${reservation.status}`,
+        });
+      }
+
+      if (Date.now() > reservation.expiresAt) {
+        await db.updateInvoiceReservation(reservationId, { status: 'expired' });
+        return res.status(400).json({ error: 'Reservation expired' });
+      }
+
+      // Get legs
+      const legs = await db.getLegsByReservation(reservationId);
+      const leg = legs.find((l) => l.legIndex === legIndex);
+
+      if (!leg) {
+        return res.status(404).json({
+          error: `Leg ${legIndex} not found`,
+        });
+      }
+
+      if (leg.status === 'completed') {
+        return res.status(400).json({
+          error: 'Leg already completed',
+          txSignature: leg.txSignature,
+        });
+      }
+
+      // Validate leg order (must execute in sequence)
+      const previousLeg = legs.find((l) => l.legIndex === legIndex - 1);
+      if (previousLeg && previousLeg.status !== 'completed') {
+        return res.status(400).json({
+          error: `Previous leg ${legIndex - 1} must be completed first`,
+        });
+      }
+
+      // Execute leg
+      const { createSplitTenderExecutor } = await import('../services/splitTenderExecutor.js');
+      const connection = new Connection(config.solana.rpcUrl, config.solana.commitment);
+      const executor = createSplitTenderExecutor(connection, db);
+
+      const result = await executor.executeLeg({
+        leg,
+        reservation,
+        payerPublicKey: reservation.payer,
+        signedTransaction,
+      });
+
+      if (result.success) {
+        log.info({
+          reservationId,
+          legIndex,
+          txSignature: result.txSignature,
+        }, 'Leg executed successfully');
+
+        // Check if all legs complete
+        const progress = await executor.getProgress(reservationId);
+
+        res.json({
+          success: true,
+          legIndex,
+          txSignature: result.txSignature,
+          actualUsdcOut: result.actualUsdcOut,
+          progress,
+        });
+      } else {
+        log.warn({
+          reservationId,
+          legIndex,
+          error: result.error,
+          shouldRetry: result.shouldRetry,
+        }, 'Leg execution failed');
+
+        res.status(400).json({
+          success: false,
+          legIndex,
+          error: result.error,
+          shouldRetry: result.shouldRetry,
+        });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      log.error({ error }, 'Failed to execute leg');
+      res.status(500).json({ error: message });
+    }
+  });
+
+  /**
+   * GET /api/v1/payments/reservation/:reservationId/progress
+   * Get progress of a split payment reservation (V1.5)
+   */
+  router.get('/payments/reservation/:reservationId/progress', async (req: Request, res: Response) => {
+    try {
+      const { reservationId } = req.params;
+
+      const reservation = await db.getInvoiceReservation(reservationId);
+      if (!reservation) {
+        return res.status(404).json({ error: 'Reservation not found' });
+      }
+
+      const legs = await db.getLegsByReservation(reservationId);
+      const plan = JSON.parse(reservation.planJson);
+
+      const percentComplete = reservation.totalLegs > 0
+        ? Math.round((reservation.completedLegs / reservation.totalLegs) * 100)
+        : 0;
+
+      res.json({
+        reservationId,
+        invoiceId: reservation.invoiceId,
+        payer: reservation.payer,
+        strategy: reservation.strategy,
+        status: reservation.status,
+        totalLegs: reservation.totalLegs,
+        completedLegs: reservation.completedLegs,
+        usdcCollected: reservation.usdcCollected,
+        targetAmount: plan.settlementAmount,
+        percentComplete,
+        expiresAt: reservation.expiresAt,
+        isExpired: Date.now() > reservation.expiresAt,
+        legs: legs.map((leg) => ({
+          legIndex: leg.legIndex,
+          payMint: leg.payMint,
+          amountIn: leg.amountIn,
+          expectedUsdcOut: leg.expectedUsdcOut,
+          actualUsdcOut: leg.actualUsdcOut,
+          status: leg.status,
+          txSignature: leg.txSignature,
+          errorMessage: leg.errorMessage,
+          retryCount: leg.retryCount,
+          maxRetries: leg.maxRetries,
+        })),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      log.error({ error }, 'Failed to get reservation progress');
+      res.status(500).json({ error: message });
+    }
+  });
+
+  /**
    * POST /api/v1/payments/build
    * Build a payment transaction
    */

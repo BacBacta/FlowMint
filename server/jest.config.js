@@ -28,6 +28,10 @@ module.exports = {
   setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
   verbose: true,
   testTimeout: 30000,
+  // Force exit after tests complete (avoid hanging on open handles)
+  forceExit: true,
+  // Reduce noise - don't show the "Force exiting" warning
+  silent: false,
   transform: {
     '^.+\\.tsx?$': ['ts-jest', {
       useESM: false,

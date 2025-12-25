@@ -228,6 +228,61 @@ export interface RelayerSubmissionRecord {
   createdAt: number;
 }
 
+// ==================== V1.5 Split-Tender Types ====================
+
+/**
+ * Split-tender strategy
+ */
+export type SplitTenderStrategy = 'min-risk' | 'min-slippage' | 'min-failure';
+
+/**
+ * Invoice reservation record (for multi-leg payments)
+ */
+export interface InvoiceReservationRecord {
+  id: string;
+  invoiceId: string;
+  payer: string;
+  strategy: SplitTenderStrategy;
+  planJson: string;
+  totalLegs: number;
+  completedLegs: number;
+  usdcCollected: string;
+  status: 'active' | 'completed' | 'expired' | 'failed' | 'cancelled' | 'partial-failure';
+  expiresAt: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * Payment leg status
+ */
+export type PaymentLegStatus = 'pending' | 'executing' | 'completed' | 'failed' | 'skipped' | 'cancelled';
+
+/**
+ * Payment leg record (individual swap in split-tender)
+ */
+export interface PaymentLegRecord {
+  id: string;
+  reservationId: string;
+  invoiceId: string;
+  legIndex: number;
+  payMint: string;
+  amountIn: string;
+  expectedUsdcOut: string;
+  actualUsdcOut?: string;
+  routeJson?: string;
+  riskJson?: string;
+  status: PaymentLegStatus;
+  txSignature?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  retryCount: number;
+  maxRetries: number;
+  startedAt?: number;
+  completedAt?: number;
+  createdAt: number;
+}
+
 /**
  * Database Service
  *
@@ -647,6 +702,64 @@ export class DatabaseService {
 
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_relayer_invoice ON relayer_submissions(invoice_id)`);
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_relayer_status ON relayer_submissions(status)`);
+
+    // ==================== V1.5 Split-Tender Tables ====================
+
+    // Invoice reservations table (prevents double payment during multi-leg)
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS invoice_reservations (
+        id TEXT PRIMARY KEY,
+        invoice_id TEXT NOT NULL UNIQUE,
+        payer TEXT NOT NULL,
+        strategy TEXT NOT NULL DEFAULT 'min-risk',
+        plan_json TEXT NOT NULL,
+        total_legs INTEGER NOT NULL,
+        completed_legs INTEGER NOT NULL DEFAULT 0,
+        usdc_collected TEXT NOT NULL DEFAULT '0',
+        status TEXT NOT NULL DEFAULT 'active',
+        expires_at INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (invoice_id) REFERENCES invoices(id)
+      )
+    `);
+
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_reservations_invoice ON invoice_reservations(invoice_id)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_reservations_payer ON invoice_reservations(payer)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_reservations_status ON invoice_reservations(status)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_reservations_expires ON invoice_reservations(expires_at)`);
+
+    // Payment legs table (tracks individual token swaps in split-tender)
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS payment_legs (
+        id TEXT PRIMARY KEY,
+        reservation_id TEXT NOT NULL,
+        invoice_id TEXT NOT NULL,
+        leg_index INTEGER NOT NULL,
+        pay_mint TEXT NOT NULL,
+        amount_in TEXT NOT NULL,
+        expected_usdc_out TEXT NOT NULL,
+        actual_usdc_out TEXT,
+        route_json TEXT,
+        risk_json TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        tx_signature TEXT,
+        error_code TEXT,
+        error_message TEXT,
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        max_retries INTEGER NOT NULL DEFAULT 3,
+        started_at INTEGER,
+        completed_at INTEGER,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (reservation_id) REFERENCES invoice_reservations(id),
+        FOREIGN KEY (invoice_id) REFERENCES invoices(id)
+      )
+    `);
+
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_legs_reservation ON payment_legs(reservation_id)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_legs_invoice ON payment_legs(invoice_id)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_legs_status ON payment_legs(status)`);
+    this.db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_legs_unique ON payment_legs(reservation_id, leg_index)`);
 
     this.log.debug('Database tables created');
   }
@@ -2420,5 +2533,272 @@ export class DatabaseService {
       row[col] = values[idx];
     });
     return row;
+  }
+
+  // ==================== V1.5 Split-Tender Methods ====================
+
+  // ---------- Invoice Reservation Methods ----------
+
+  async saveInvoiceReservation(reservation: InvoiceReservationRecord): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    this.db.run(
+      `INSERT INTO invoice_reservations (id, invoice_id, payer, strategy, plan_json, total_legs, completed_legs, usdc_collected, status, expires_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        reservation.id,
+        reservation.invoiceId,
+        reservation.payer,
+        reservation.strategy,
+        reservation.planJson,
+        reservation.totalLegs,
+        reservation.completedLegs,
+        reservation.usdcCollected,
+        reservation.status,
+        reservation.expiresAt,
+        reservation.createdAt,
+        reservation.updatedAt,
+      ]
+    );
+
+    this.saveToFile();
+  }
+
+  async getInvoiceReservation(reservationId: string): Promise<InvoiceReservationRecord | undefined> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = this.db.exec(`SELECT * FROM invoice_reservations WHERE id = ?`, [reservationId]);
+
+    if (result.length === 0 || result[0].values.length === 0) return undefined;
+
+    const row = this.mapRow(result[0].columns, result[0].values[0]);
+    return this.mapReservationRow(row);
+  }
+
+  async getReservationByInvoice(invoiceId: string): Promise<InvoiceReservationRecord | undefined> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = this.db.exec(
+      `SELECT * FROM invoice_reservations WHERE invoice_id = ? AND status = 'active' ORDER BY created_at DESC LIMIT 1`,
+      [invoiceId]
+    );
+
+    if (result.length === 0 || result[0].values.length === 0) return undefined;
+
+    const row = this.mapRow(result[0].columns, result[0].values[0]);
+    return this.mapReservationRow(row);
+  }
+
+  async updateInvoiceReservation(
+    reservationId: string,
+    updates: Partial<InvoiceReservationRecord>
+  ): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const setClauses: string[] = [];
+    const values: any[] = [];
+
+    if (updates.completedLegs !== undefined) {
+      setClauses.push('completed_legs = ?');
+      values.push(updates.completedLegs);
+    }
+    if (updates.usdcCollected !== undefined) {
+      setClauses.push('usdc_collected = ?');
+      values.push(updates.usdcCollected);
+    }
+    if (updates.status !== undefined) {
+      setClauses.push('status = ?');
+      values.push(updates.status);
+    }
+
+    setClauses.push('updated_at = ?');
+    values.push(Date.now());
+    values.push(reservationId);
+
+    this.db.run(`UPDATE invoice_reservations SET ${setClauses.join(', ')} WHERE id = ?`, values);
+
+    this.saveToFile();
+  }
+
+  async expireStaleReservations(): Promise<number> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const now = Date.now();
+    this.db.run(
+      `UPDATE invoice_reservations SET status = 'expired', updated_at = ? WHERE status = 'active' AND expires_at < ?`,
+      [now, now]
+    );
+
+    this.saveToFile();
+
+    const result = this.db.exec(`SELECT changes() as count`);
+    return result.length > 0 ? Number(result[0].values[0][0]) : 0;
+  }
+
+  private mapReservationRow(row: Record<string, any>): InvoiceReservationRecord {
+    return {
+      id: row.id,
+      invoiceId: row.invoice_id,
+      payer: row.payer,
+      strategy: row.strategy as SplitTenderStrategy,
+      planJson: row.plan_json,
+      totalLegs: Number(row.total_legs),
+      completedLegs: Number(row.completed_legs),
+      usdcCollected: row.usdc_collected,
+      status: row.status,
+      expiresAt: Number(row.expires_at),
+      createdAt: Number(row.created_at),
+      updatedAt: Number(row.updated_at),
+    };
+  }
+
+  // ---------- Payment Leg Methods ----------
+
+  async savePaymentLeg(leg: PaymentLegRecord): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    this.db.run(
+      `INSERT INTO payment_legs (id, reservation_id, invoice_id, leg_index, pay_mint, amount_in, expected_usdc_out, actual_usdc_out, route_json, risk_json, status, tx_signature, error_code, error_message, retry_count, max_retries, started_at, completed_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        leg.id,
+        leg.reservationId,
+        leg.invoiceId,
+        leg.legIndex,
+        leg.payMint,
+        leg.amountIn,
+        leg.expectedUsdcOut,
+        leg.actualUsdcOut || null,
+        leg.routeJson || null,
+        leg.riskJson || null,
+        leg.status,
+        leg.txSignature || null,
+        leg.errorCode || null,
+        leg.errorMessage || null,
+        leg.retryCount,
+        leg.maxRetries,
+        leg.startedAt || null,
+        leg.completedAt || null,
+        leg.createdAt,
+      ]
+    );
+
+    this.saveToFile();
+  }
+
+  async getPaymentLeg(legId: string): Promise<PaymentLegRecord | undefined> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = this.db.exec(`SELECT * FROM payment_legs WHERE id = ?`, [legId]);
+
+    if (result.length === 0 || result[0].values.length === 0) return undefined;
+
+    const row = this.mapRow(result[0].columns, result[0].values[0]);
+    return this.mapLegRow(row);
+  }
+
+  async getLegsByReservation(reservationId: string): Promise<PaymentLegRecord[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = this.db.exec(
+      `SELECT * FROM payment_legs WHERE reservation_id = ? ORDER BY leg_index ASC`,
+      [reservationId]
+    );
+
+    if (result.length === 0) return [];
+
+    return result[0].values.map((row) => {
+      const mapped = this.mapRow(result[0].columns, row);
+      return this.mapLegRow(mapped);
+    });
+  }
+
+  async updatePaymentLeg(
+    legId: string,
+    updates: Partial<PaymentLegRecord>
+  ): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const setClauses: string[] = [];
+    const values: any[] = [];
+
+    if (updates.status !== undefined) {
+      setClauses.push('status = ?');
+      values.push(updates.status);
+    }
+    if (updates.actualUsdcOut !== undefined) {
+      setClauses.push('actual_usdc_out = ?');
+      values.push(updates.actualUsdcOut);
+    }
+    if (updates.txSignature !== undefined) {
+      setClauses.push('tx_signature = ?');
+      values.push(updates.txSignature);
+    }
+    if (updates.errorCode !== undefined) {
+      setClauses.push('error_code = ?');
+      values.push(updates.errorCode);
+    }
+    if (updates.errorMessage !== undefined) {
+      setClauses.push('error_message = ?');
+      values.push(updates.errorMessage);
+    }
+    if (updates.retryCount !== undefined) {
+      setClauses.push('retry_count = ?');
+      values.push(updates.retryCount);
+    }
+    if (updates.startedAt !== undefined) {
+      setClauses.push('started_at = ?');
+      values.push(updates.startedAt);
+    }
+    if (updates.completedAt !== undefined) {
+      setClauses.push('completed_at = ?');
+      values.push(updates.completedAt);
+    }
+
+    values.push(legId);
+
+    this.db.run(`UPDATE payment_legs SET ${setClauses.join(', ')} WHERE id = ?`, values);
+
+    this.saveToFile();
+  }
+
+  async getPendingLegs(reservationId: string): Promise<PaymentLegRecord[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = this.db.exec(
+      `SELECT * FROM payment_legs WHERE reservation_id = ? AND status IN ('pending', 'failed') AND retry_count < max_retries ORDER BY leg_index ASC`,
+      [reservationId]
+    );
+
+    if (result.length === 0) return [];
+
+    return result[0].values.map((row) => {
+      const mapped = this.mapRow(result[0].columns, row);
+      return this.mapLegRow(mapped);
+    });
+  }
+
+  private mapLegRow(row: Record<string, any>): PaymentLegRecord {
+    return {
+      id: row.id,
+      reservationId: row.reservation_id,
+      invoiceId: row.invoice_id,
+      legIndex: Number(row.leg_index),
+      payMint: row.pay_mint,
+      amountIn: row.amount_in,
+      expectedUsdcOut: row.expected_usdc_out,
+      actualUsdcOut: row.actual_usdc_out || undefined,
+      routeJson: row.route_json || undefined,
+      riskJson: row.risk_json || undefined,
+      status: row.status as PaymentLegStatus,
+      txSignature: row.tx_signature || undefined,
+      errorCode: row.error_code || undefined,
+      errorMessage: row.error_message || undefined,
+      retryCount: Number(row.retry_count),
+      maxRetries: Number(row.max_retries),
+      startedAt: row.started_at ? Number(row.started_at) : undefined,
+      completedAt: row.completed_at ? Number(row.completed_at) : undefined,
+      createdAt: Number(row.created_at),
+    };
   }
 }
