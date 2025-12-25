@@ -19,6 +19,9 @@ import {
   type Payment,
   type HealthResponse,
   type Token,
+  type AttestationSummary,
+  type VerifyAttestationResponse,
+  type VerifyLegProofResponse,
 } from './types';
 
 export interface FlowMintClientConfig {
@@ -261,6 +264,44 @@ export class FlowMintClient {
    */
   async getMerchantPayments(merchantId: string): Promise<Payment[]> {
     return this.request<Payment[]>(`/api/payment/merchant/${merchantId}`);
+  }
+
+  // =========================================================================
+  // Attestations (PortfolioPay)
+  // =========================================================================
+
+  /**
+   * Get an attestation summary by ID
+   */
+  async getAttestation(attestationId: string): Promise<AttestationSummary> {
+    return this.request<AttestationSummary>(`/api/v1/attestations/${attestationId}`);
+  }
+
+  /**
+   * Verify an attestation signature and referenced invoice state
+   */
+  async verifyAttestation(attestationId: string): Promise<VerifyAttestationResponse> {
+    return this.request<VerifyAttestationResponse>(`/api/v1/attestations/${attestationId}/verify`);
+  }
+
+  /**
+   * Verify a specific leg Merkle proof within an attestation
+   */
+  async verifyAttestationLeg(
+    attestationId: string,
+    legIndex: number
+  ): Promise<VerifyLegProofResponse> {
+    const queryParams = new URLSearchParams({ leg: legIndex.toString() });
+    return this.request<VerifyLegProofResponse>(
+      `/api/v1/attestations/${attestationId}/verify?${queryParams}`
+    );
+  }
+
+  /**
+   * Get attestation summary for a given invoice
+   */
+  async getInvoiceAttestation(invoiceId: string): Promise<AttestationSummary> {
+    return this.request<AttestationSummary>(`/api/v1/invoices/${invoiceId}/attestation`);
   }
 
   // =========================================================================

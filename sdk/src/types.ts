@@ -181,3 +181,31 @@ export interface RiskAssessment {
   outputTokenRisk: string;
   warnings: string[];
 }
+
+// Attestation types (PortfolioPay)
+export interface AttestationSummary {
+  id: string;
+  invoiceId: string;
+  policyHash: string;
+  signerPubkey: string;
+  signature: string;
+  verificationUrl: string;
+  createdAt: number;
+}
+
+export interface VerifyAttestationResponse {
+  valid: boolean;
+  errors: string[];
+  attestation?: AttestationSummary;
+}
+
+export interface VerifyLegProofResponse {
+  valid: boolean;
+  legIndex: number;
+  errors: string[];
+  proof?: {
+    legIndex: number;
+    merkleProof: string[];
+    leafHash: string;
+  };
+}
