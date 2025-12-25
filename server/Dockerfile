@@ -8,17 +8,21 @@ RUN npm install -g pnpm
 
 WORKDIR /app
 
-# Copy package files
-COPY package.json pnpm-lock.yaml ./
+# Copy root package files for monorepo
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+
+# Copy server package.json
+COPY server/package.json ./server/
 
 # Install dependencies
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --filter server
 
-# Copy source code
-COPY tsconfig.json ./
-COPY src ./src
+# Copy server source code
+COPY server/tsconfig.json ./server/
+COPY server/src ./server/src
 
-# Build
+# Build server
+WORKDIR /app/server
 RUN pnpm build
 
 # ============================================================================
@@ -35,22 +39,27 @@ WORKDIR /app
 # Install pnpm
 RUN npm install -g pnpm
 
-# Copy package files
-COPY package.json pnpm-lock.yaml ./
+# Copy root package files for monorepo
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+
+# Copy server package.json
+COPY server/package.json ./server/
 
 # Install production dependencies only
-RUN pnpm install --frozen-lockfile --prod
+RUN pnpm install --frozen-lockfile --prod --filter server
+
+WORKDIR /app/server
 
 # Copy built files from builder
-COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/server/dist ./dist
 
 # Create data directory for SQLite
-RUN mkdir -p /app/data && chown -R nodejs:nodejs /app/data
+RUN mkdir -p /app/server/data && chown -R nodejs:nodejs /app/server/data
 
 # Set environment variables
 ENV NODE_ENV=production
 ENV PORT=3001
-ENV DATABASE_PATH=/app/data/flowmint.db
+ENV DATABASE_PATH=/app/server/data/flowmint.db
 
 # Switch to non-root user
 USER nodejs
