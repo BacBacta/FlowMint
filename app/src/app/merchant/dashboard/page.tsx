@@ -102,6 +102,27 @@ function MerchantDashboardContent() {
     }
   };
 
+  const handleDownloadAttestationKit = async (invoiceId: string) => {
+    try {
+      const resp = await fetch(
+        `/api/v1/invoices/${encodeURIComponent(invoiceId)}/attestation/kit`
+      );
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}`);
+      }
+
+      const blob = await resp.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `attestation-kit-${invoiceId}.json`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Download kit failed:', error);
+    }
+  };
+
   const stats = statsData?.stats;
   const invoices = invoicesData?.invoices || [];
 
@@ -284,6 +305,9 @@ function MerchantDashboardContent() {
                           <th className="pb-3 font-medium text-surface-600 dark:text-surface-400">
                             TX
                           </th>
+                          <th className="pb-3 font-medium text-surface-600 dark:text-surface-400">
+                            Attestation
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -327,6 +351,18 @@ function MerchantDashboardContent() {
                                 >
                                   View
                                 </a>
+                              ) : (
+                                '-'
+                              )}
+                            </td>
+                            <td className="py-3">
+                              {invoice.status === 'paid' ? (
+                                <button
+                                  onClick={() => handleDownloadAttestationKit(invoice.id)}
+                                  className="text-primary-500 hover:underline"
+                                >
+                                  Download
+                                </button>
                               ) : (
                                 '-'
                               )}

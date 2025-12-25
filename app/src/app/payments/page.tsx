@@ -865,6 +865,25 @@ function PaymentsContent() {
                                 </span>
                               </div>
 
+                              {(() => {
+                                const isInt = (v: string) => /^\d+$/.test(v);
+                                if (
+                                  !isInt(multiTokenQuote.totalExpectedUsdcOut) ||
+                                  !isInt(multiTokenQuote.settlementAmount)
+                                ) {
+                                  return null;
+                                }
+                                const surplus =
+                                  BigInt(multiTokenQuote.totalExpectedUsdcOut) -
+                                  BigInt(multiTokenQuote.settlementAmount);
+                                if (surplus <= 0n) return null;
+                                return (
+                                  <div className="mt-2 text-sm text-surface-600 dark:text-surface-400">
+                                    Surplus estimé : ${surplus.toString()} USDC sera remboursé après règlement.
+                                  </div>
+                                );
+                              })()}
+
                               {/* Execute Leg Button */}
                               {currentLegIndex < multiTokenQuote.legs.length && (
                                 <button
