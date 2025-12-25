@@ -3,8 +3,8 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
+import { z } from 'zod';
 
 import { DatabaseService, type PaymentLinkRecord } from '../../db/database.js';
 import { PaymentService } from '../../services/paymentService.js';
@@ -364,7 +364,11 @@ export function createPaymentRoutes(db: DatabaseService): Router {
         let status: 'pending' | 'completed' | 'failed' | 'expired' = 'pending';
         if (payment?.status) {
           status = mapPaymentStatus(payment.status);
-        } else if (link.status === 'completed' || link.status === 'failed' || link.status === 'expired') {
+        } else if (
+          link.status === 'completed' ||
+          link.status === 'failed' ||
+          link.status === 'expired'
+        ) {
           status = link.status;
         }
 

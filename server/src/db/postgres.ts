@@ -6,9 +6,10 @@
  */
 
 import { Pool, PoolClient } from 'pg';
-import { logger } from '../utils/logger.js';
+
 import { Intent, IntentType, IntentStatus } from '../services/intentScheduler.js';
 import { PaymentRecord } from '../services/paymentService.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Receipt record
@@ -112,9 +113,13 @@ export class PostgresService {
         )
       `);
 
-      await client.query(`CREATE INDEX IF NOT EXISTS idx_receipts_user ON receipts(user_public_key)`);
+      await client.query(
+        `CREATE INDEX IF NOT EXISTS idx_receipts_user ON receipts(user_public_key)`
+      );
       await client.query(`CREATE INDEX IF NOT EXISTS idx_receipts_status ON receipts(status)`);
-      await client.query(`CREATE INDEX IF NOT EXISTS idx_receipts_timestamp ON receipts(timestamp DESC)`);
+      await client.query(
+        `CREATE INDEX IF NOT EXISTS idx_receipts_timestamp ON receipts(timestamp DESC)`
+      );
 
       // Intents table
       await client.query(`
@@ -144,7 +149,9 @@ export class PostgresService {
       await client.query(`CREATE INDEX IF NOT EXISTS idx_intents_user ON intents(user_public_key)`);
       await client.query(`CREATE INDEX IF NOT EXISTS idx_intents_status ON intents(status)`);
       await client.query(`CREATE INDEX IF NOT EXISTS idx_intents_type ON intents(intent_type)`);
-      await client.query(`CREATE INDEX IF NOT EXISTS idx_intents_next_execution ON intents(next_execution_at)`);
+      await client.query(
+        `CREATE INDEX IF NOT EXISTS idx_intents_next_execution ON intents(next_execution_at)`
+      );
 
       // Payments table
       await client.query(`
@@ -163,8 +170,12 @@ export class PostgresService {
         )
       `);
 
-      await client.query(`CREATE INDEX IF NOT EXISTS idx_payments_payer ON payments(payer_public_key)`);
-      await client.query(`CREATE INDEX IF NOT EXISTS idx_payments_merchant ON payments(merchant_public_key)`);
+      await client.query(
+        `CREATE INDEX IF NOT EXISTS idx_payments_payer ON payments(payer_public_key)`
+      );
+      await client.query(
+        `CREATE INDEX IF NOT EXISTS idx_payments_merchant ON payments(merchant_public_key)`
+      );
       await client.query(`CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status)`);
 
       // Notifications table
@@ -182,8 +193,12 @@ export class PostgresService {
         )
       `);
 
-      await client.query(`CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_public_key)`);
-      await client.query(`CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read)`);
+      await client.query(
+        `CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_public_key)`
+      );
+      await client.query(
+        `CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read)`
+      );
 
       // Job locks table
       await client.query(`
@@ -220,7 +235,9 @@ export class PostgresService {
         )
       `);
 
-      await client.query(`CREATE INDEX IF NOT EXISTS idx_execution_metrics_created ON execution_metrics(created_at DESC)`);
+      await client.query(
+        `CREATE INDEX IF NOT EXISTS idx_execution_metrics_created ON execution_metrics(created_at DESC)`
+      );
 
       this.log.debug('PostgreSQL tables created');
     } finally {
@@ -285,7 +302,9 @@ export class PostgresService {
   async getReceipt(receiptId: string): Promise<ReceiptRecord | null> {
     if (!this.pool) throw new Error('Database not initialized');
 
-    const result = await this.pool.query('SELECT * FROM receipts WHERE receipt_id = $1', [receiptId]);
+    const result = await this.pool.query('SELECT * FROM receipts WHERE receipt_id = $1', [
+      receiptId,
+    ]);
 
     if (result.rows.length === 0) return null;
 
@@ -300,7 +319,7 @@ export class PostgresService {
       [userPublicKey, limit]
     );
 
-    return result.rows.map((row) => this.mapReceiptRow(row));
+    return result.rows.map(row => this.mapReceiptRow(row));
   }
 
   private mapReceiptRow(row: any): ReceiptRecord {
@@ -396,7 +415,7 @@ export class PostgresService {
       [userPublicKey]
     );
 
-    return result.rows.map((row) => this.mapIntentRow(row));
+    return result.rows.map(row => this.mapIntentRow(row));
   }
 
   async getActiveIntents(): Promise<Intent[]> {
@@ -407,7 +426,7 @@ export class PostgresService {
       [IntentStatus.ACTIVE]
     );
 
-    return result.rows.map((row) => this.mapIntentRow(row));
+    return result.rows.map(row => this.mapIntentRow(row));
   }
 
   async getPendingDCAIntents(): Promise<Intent[]> {
@@ -422,7 +441,7 @@ export class PostgresService {
       [IntentType.DCA, IntentStatus.ACTIVE, now]
     );
 
-    return result.rows.map((row) => this.mapIntentRow(row));
+    return result.rows.map(row => this.mapIntentRow(row));
   }
 
   async getActiveStopLossIntents(): Promise<Intent[]> {
@@ -433,7 +452,7 @@ export class PostgresService {
       [IntentType.STOP_LOSS, IntentStatus.ACTIVE]
     );
 
-    return result.rows.map((row) => this.mapIntentRow(row));
+    return result.rows.map(row => this.mapIntentRow(row));
   }
 
   private mapIntentRow(row: any): Intent {
@@ -499,7 +518,9 @@ export class PostgresService {
   async getPayment(paymentId: string): Promise<PaymentRecord | null> {
     if (!this.pool) throw new Error('Database not initialized');
 
-    const result = await this.pool.query('SELECT * FROM payments WHERE payment_id = $1', [paymentId]);
+    const result = await this.pool.query('SELECT * FROM payments WHERE payment_id = $1', [
+      paymentId,
+    ]);
 
     if (result.rows.length === 0) return null;
 
@@ -524,7 +545,11 @@ export class PostgresService {
 
   // ==================== Job Lock Methods ====================
 
-  async acquireJobLock(jobKey: string, intentId: string, scheduledAt: number): Promise<JobLock | null> {
+  async acquireJobLock(
+    jobKey: string,
+    intentId: string,
+    scheduledAt: number
+  ): Promise<JobLock | null> {
     if (!this.pool) throw new Error('Database not initialized');
 
     const id = `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -593,7 +618,7 @@ export class PostgresService {
       [intentId]
     );
 
-    return result.rows.map((row) => this.mapJobLockRow(row));
+    return result.rows.map(row => this.mapJobLockRow(row));
   }
 
   private mapJobLockRow(row: any): JobLock {

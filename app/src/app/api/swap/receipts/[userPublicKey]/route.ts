@@ -16,11 +16,8 @@ export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders });
 }
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { userPublicKey: string } }
-) {
-  const userPublicKey = params.userPublicKey;
+export async function GET(request: NextRequest, { params }: { params: { userPublicKey: string } }) {
+  const _userPublicKey = params.userPublicKey;
 
   // TODO: Implement database query for receipts
   // For now, return empty array

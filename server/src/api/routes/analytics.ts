@@ -26,7 +26,7 @@ export function createAnalyticsRoutes(db: DatabaseService): Router {
   router.get('/overview', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const timeRange = (req.query.timeRange as TimeRange) || '24h';
-      
+
       if (!['1h', '24h', '7d', '30d', 'all'].includes(timeRange)) {
         return res.status(400).json({
           success: false,

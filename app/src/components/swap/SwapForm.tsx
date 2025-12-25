@@ -1,11 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 
-import { apiClient } from '@/lib/api';
 import {
   RiskBadge,
   RiskBreakdown,
@@ -15,10 +13,11 @@ import {
   type RiskReason,
   type ExecutionStep,
 } from '@/components/risk';
+import { apiClient } from '@/lib/api';
 
-import { TokenSelector } from './TokenSelector';
 import { ExecutionProfileSelector, type ExecutionProfile } from './ExecutionProfileSelector';
 import { ReceiptModal } from './ReceiptModal';
+import { TokenSelector } from './TokenSelector';
 
 // Common tokens
 const POPULAR_TOKENS = [
@@ -52,7 +51,7 @@ export function SwapForm() {
   const [executionSteps, setExecutionSteps] = useState<ExecutionStep[]>([]);
   const [executionProfile, setExecutionProfile] = useState<ExecutionProfile>('AUTO');
   const [showReceiptModal, setShowReceiptModal] = useState(false);
-  const [lastReceipt, setLastReceipt] = useState<any>(null);
+  const [lastReceipt, _setLastReceipt] = useState<any>(null);
 
   // Debounced quote fetch
   const debouncedAmount = useDebounce(inputAmount, 500);
@@ -97,10 +96,15 @@ export function SwapForm() {
       ]);
 
       // Get swap transaction from server
-      setExecutionSteps(prev => prev.map(s => 
-        s.id === 'prepare' ? { ...s, status: 'completed' } :
-        s.id === 'sign' ? { ...s, status: 'current' } : s
-      ));
+      setExecutionSteps(prev =>
+        prev.map(s =>
+          s.id === 'prepare'
+            ? { ...s, status: 'completed' }
+            : s.id === 'sign'
+              ? { ...s, status: 'current' }
+              : s
+        )
+      );
 
       const swapTx = await apiClient.executeSwap({
         userPublicKey: publicKey.toBase58(),
@@ -112,10 +116,15 @@ export function SwapForm() {
       });
 
       // Update execution steps after successful submission
-      setExecutionSteps(prev => prev.map(s => 
-        s.id === 'sign' ? { ...s, status: 'completed' } :
-        s.id === 'send' ? { ...s, status: 'current' } : s
-      ));
+      setExecutionSteps(prev =>
+        prev.map(s =>
+          s.id === 'sign'
+            ? { ...s, status: 'completed' }
+            : s.id === 'send'
+              ? { ...s, status: 'current' }
+              : s
+        )
+      );
 
       return swapTx;
     },
@@ -211,17 +220,14 @@ export function SwapForm() {
     <div className="card">
       {/* Protected Mode Toggle */}
       <div className="mb-4">
-        <ProtectedToggle
-          enabled={protectedMode}
-          onChange={setProtectedMode}
-        />
+        <ProtectedToggle enabled={protectedMode} onChange={setProtectedMode} />
       </div>
 
       {/* Settings Button */}
       <div className="mb-4 flex items-center justify-between">
         {/* Risk Badge */}
         {quote && <RiskBadge level={riskLevel} size="sm" />}
-        
+
         <button
           onClick={() => setShowSettings(!showSettings)}
           className="btn-ghost rounded-lg p-2"
@@ -280,10 +286,7 @@ export function SwapForm() {
 
           {/* Execution Profile Selector */}
           <div className="mt-4">
-            <ExecutionProfileSelector
-              value={executionProfile}
-              onChange={setExecutionProfile}
-            />
+            <ExecutionProfileSelector value={executionProfile} onChange={setExecutionProfile} />
           </div>
         </div>
       )}
@@ -401,8 +404,8 @@ export function SwapForm() {
                 Blocked by Protected Mode
               </p>
               <p className="mt-1 text-sm text-red-700 dark:text-red-300">
-                This swap has been blocked because it exceeds the safety thresholds for protected mode.
-                Disable protected mode to proceed (at your own risk).
+                This swap has been blocked because it exceeds the safety thresholds for protected
+                mode. Disable protected mode to proceed (at your own risk).
               </p>
             </div>
           </div>
@@ -412,10 +415,7 @@ export function SwapForm() {
       {/* Execution Status (during swap) */}
       {swapMutation.isPending && executionSteps.length > 0 && (
         <div className="mt-4">
-          <ExecutionStatus
-            steps={executionSteps}
-            variant="minimal"
-          />
+          <ExecutionStatus steps={executionSteps} variant="minimal" />
         </div>
       )}
 
@@ -430,9 +430,9 @@ export function SwapForm() {
       <button
         onClick={() => swapMutation.mutate()}
         disabled={
-          !quote || 
-          swapMutation.isPending || 
-          !inputAmount || 
+          !quote ||
+          swapMutation.isPending ||
+          !inputAmount ||
           isBlocked ||
           (requiresAcknowledgement && !riskAcknowledged)
         }

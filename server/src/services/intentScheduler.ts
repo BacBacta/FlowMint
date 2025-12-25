@@ -6,15 +6,20 @@
  * Integrates JobLockService for idempotent execution.
  */
 
-import { CronJob } from 'cron';
 import axios from 'axios';
+import { CronJob } from 'cron';
 
 import { config } from '../config/index.js';
-import { logger } from '../utils/logger.js';
 import { DatabaseService } from '../db/database.js';
+import { logger } from '../utils/logger.js';
+
 import { ExecutionEngine } from './executionEngine.js';
-import { NotificationService, NotificationType, NotificationPriority } from './notificationService.js';
 import { JobLockService, JobStatus } from './jobLockService.js';
+import {
+  NotificationService,
+  NotificationType,
+  NotificationPriority,
+} from './notificationService.js';
 import { OracleService, PYTH_FEED_IDS, STALENESS_THRESHOLDS } from './oracleService.js';
 
 // Helper to safely notify (logs warning if service not initialized)
@@ -237,7 +242,9 @@ export class IntentScheduler {
 
     if (request.intentType === IntentType.STOP_LOSS) {
       if (!request.priceThreshold || !request.priceDirection || !request.priceFeedId) {
-        throw new Error('Stop-loss intent requires priceThreshold, priceDirection, and priceFeedId');
+        throw new Error(
+          'Stop-loss intent requires priceThreshold, priceDirection, and priceFeedId'
+        );
       }
     }
 
@@ -390,10 +397,7 @@ export class IntentScheduler {
           error: result.error,
         });
 
-        this.log.error(
-          { intentId: intent.id, jobId, error: result.error },
-          'DCA slice failed'
-        );
+        this.log.error({ intentId: intent.id, jobId, error: result.error }, 'DCA slice failed');
 
         await safeNotify(
           intent.userPublicKey,
@@ -476,10 +480,7 @@ export class IntentScheduler {
       });
 
       if (result.status === 'failed') {
-        this.log.error(
-          { intentId: intent.id, error: result.error },
-          'DCA slice failed'
-        );
+        this.log.error({ intentId: intent.id, error: result.error }, 'DCA slice failed');
         // Don't fail the whole intent, just skip this slice
         // Notify user of failure
         await safeNotify(
@@ -510,7 +511,7 @@ export class IntentScheduler {
         // Intent completed
         await this.db.updateIntentStatus(intent.id, IntentStatus.COMPLETED);
         this.log.info({ intentId: intent.id }, 'DCA intent completed');
-        
+
         // Notify user of DCA completion
         await safeNotify(
           intent.userPublicKey,
@@ -599,11 +600,7 @@ export class IntentScheduler {
             'Stop-loss triggered with validated oracle price'
           );
 
-          await this.executeStopLossWithLock(
-            intent,
-            priceCheck.price.price,
-            lockResult.jobId!
-          );
+          await this.executeStopLossWithLock(intent, priceCheck.price.price, lockResult.jobId!);
         }
       }
     } catch (error) {
@@ -688,7 +685,12 @@ export class IntentScheduler {
           NotificationType.STOP_LOSS_FAILED,
           'Stop-Loss Failed',
           `Stop-loss execution failed: ${result.error}`,
-          { intentId: intent.id, triggerPrice: intent.priceThreshold, currentPrice, error: result.error },
+          {
+            intentId: intent.id,
+            triggerPrice: intent.priceThreshold,
+            currentPrice,
+            error: result.error,
+          },
           NotificationPriority.URGENT
         );
       } else {
@@ -744,25 +746,27 @@ export class IntentScheduler {
       });
 
       if (result.status === 'failed') {
-        this.log.error(
-          { intentId: intent.id, error: result.error },
-          'Stop-loss execution failed'
-        );
+        this.log.error({ intentId: intent.id, error: result.error }, 'Stop-loss execution failed');
         await this.db.updateIntentStatus(intent.id, IntentStatus.FAILED);
-        
+
         // Notify user of stop-loss failure
         await safeNotify(
           intent.userPublicKey,
           NotificationType.STOP_LOSS_FAILED,
           'Stop-Loss Failed',
           `Stop-loss execution failed: ${result.error}`,
-          { intentId: intent.id, triggerPrice: intent.priceThreshold, currentPrice, error: result.error },
+          {
+            intentId: intent.id,
+            triggerPrice: intent.priceThreshold,
+            currentPrice,
+            error: result.error,
+          },
           NotificationPriority.URGENT
         );
       } else {
         await this.db.updateIntentStatus(intent.id, IntentStatus.COMPLETED);
         this.log.info({ intentId: intent.id }, 'Stop-loss executed successfully');
-        
+
         // Notify user of successful stop-loss execution
         await safeNotify(
           intent.userPublicKey,
@@ -776,7 +780,7 @@ export class IntentScheduler {
     } catch (error) {
       this.log.error({ intentId: intent.id, error }, 'Error executing stop-loss');
       await this.db.updateIntentStatus(intent.id, IntentStatus.FAILED);
-      
+
       // Notify user of stop-loss error
       await safeNotify(
         intent.userPublicKey,
@@ -794,7 +798,7 @@ export class IntentScheduler {
    */
   private async fetchPythPrices(feedIds: string[]): Promise<Map<string, PythPriceData>> {
     try {
-      const idsParam = feedIds.map((id) => `ids[]=${id}`).join('&');
+      const idsParam = feedIds.map(id => `ids[]=${id}`).join('&');
       const response = await axios.get<PythPriceData[]>(
         `${config.pyth.endpoint}/api/latest_price_feeds?${idsParam}`
       );

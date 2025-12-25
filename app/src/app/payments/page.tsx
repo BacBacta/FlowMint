@@ -1,12 +1,13 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+import { VersionedTransaction } from '@solana/web3.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
-import { VersionedTransaction } from '@solana/web3.js';
-import { Header } from '@/components/Header';
+import { Suspense, useEffect, useMemo, useState } from 'react';
+
 import { Footer } from '@/components/Footer';
+import { Header } from '@/components/Header';
 
 const WSOL_MINT = 'So11111111111111111111111111111111111111112';
 
@@ -443,8 +444,20 @@ function PaymentsContent() {
                       <li>• Pay using any token in your wallet</li>
                       <li>• We automatically swap to USDC via Jupiter</li>
                       <li>• Merchant receives exact USDC amount (ExactOut)</li>
-                      <li>• <span className="font-semibold text-green-600 dark:text-green-400">Gasless</span>: Pay with 0 SOL (USDC/USDT only)</li>
-                      <li>• <span className="font-semibold text-blue-600 dark:text-blue-400">Attestation</span>: Cryptographic proof of policy compliance</li>
+                      <li>
+                        •{' '}
+                        <span className="font-semibold text-green-600 dark:text-green-400">
+                          Gasless
+                        </span>
+                        : Pay with 0 SOL (USDC/USDT only)
+                      </li>
+                      <li>
+                        •{' '}
+                        <span className="font-semibold text-blue-600 dark:text-blue-400">
+                          Attestation
+                        </span>
+                        : Cryptographic proof of policy compliance
+                      </li>
                       <li>• Fast, MEV-protected transactions on Solana</li>
                     </ul>
                   </div>
@@ -453,9 +466,7 @@ function PaymentsContent() {
                   <button
                     onClick={() => payMutation.mutate()}
                     disabled={
-                      !paymentStatus ||
-                      paymentStatus?.status !== 'pending' ||
-                      payMutation.isPending
+                      !paymentStatus || paymentStatus?.status !== 'pending' || payMutation.isPending
                     }
                     className="btn-primary w-full py-3"
                   >
@@ -465,11 +476,13 @@ function PaymentsContent() {
                         ? 'Payment Expired'
                         : payMutation.isPending
                           ? 'Paying...'
-                        : `Pay $${paymentStatus?.amountUsdc || '0'} USDC`}
+                          : `Pay $${paymentStatus?.amountUsdc || '0'} USDC`}
                   </button>
 
                   {payMutation.isError && (
-                    <div className="text-sm text-red-500">{(payMutation.error as Error).message}</div>
+                    <div className="text-sm text-red-500">
+                      {(payMutation.error as Error).message}
+                    </div>
                   )}
                 </div>
               )}
@@ -484,11 +497,13 @@ function PaymentsContent() {
 }
 export default function PaymentsPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 flex items-center justify-center">
-        <div className="text-white">Loading...</div>
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900">
+          <div className="text-white">Loading...</div>
+        </div>
+      }
+    >
       <PaymentsContent />
     </Suspense>
   );

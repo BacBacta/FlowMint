@@ -6,9 +6,10 @@
  * - PostgreSQL: Production (postgresql:// or postgres://)
  */
 
+import { logger } from '../utils/logger.js';
+
 import { DatabaseService } from './database.js';
 import { PostgresService } from './postgres.js';
-import { logger } from '../utils/logger.js';
 
 const log = logger.child({ service: 'DatabaseFactory' });
 
@@ -21,7 +22,12 @@ export interface IDatabase {
 
   // Receipts
   saveReceipt(receipt: any): Promise<void>;
-  updateReceiptStatus(receiptId: string, status: 'success' | 'failed', txSignature?: string, error?: string): Promise<void>;
+  updateReceiptStatus(
+    receiptId: string,
+    status: 'success' | 'failed',
+    txSignature?: string,
+    error?: string
+  ): Promise<void>;
   getReceipt(receiptId: string): Promise<any | null>;
   getUserReceipts(userPublicKey: string, limit?: number): Promise<any[]>;
 
@@ -41,7 +47,12 @@ export interface IDatabase {
 
   // Job Locks
   acquireJobLock(jobKey: string, intentId: string, scheduledAt: number): Promise<any | null>;
-  updateJobLock(jobId: string, status: 'running' | 'completed' | 'failed', result?: string, error?: string): Promise<void>;
+  updateJobLock(
+    jobId: string,
+    status: 'running' | 'completed' | 'failed',
+    result?: string,
+    error?: string
+  ): Promise<void>;
   getJobLock(jobKey: string): Promise<any | null>;
   getJobsByIntentId(intentId: string): Promise<any[]>;
 }

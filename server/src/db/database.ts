@@ -5,13 +5,14 @@
  * Uses sql.js for pure JavaScript SQLite (no native dependencies).
  */
 
-import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { logger } from '../utils/logger.js';
+import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
+
 import { Intent, IntentType, IntentStatus } from '../services/intentScheduler.js';
 import { PaymentRecord } from '../services/paymentService.js';
+import { logger } from '../utils/logger.js';
 
 export interface PaymentLinkRecord {
   paymentId: string;
@@ -256,7 +257,13 @@ export interface InvoiceReservationRecord {
 /**
  * Payment leg status
  */
-export type PaymentLegStatus = 'pending' | 'executing' | 'completed' | 'failed' | 'skipped' | 'cancelled';
+export type PaymentLegStatus =
+  | 'pending'
+  | 'executing'
+  | 'completed'
+  | 'failed'
+  | 'skipped'
+  | 'cancelled';
 
 /**
  * Payment leg record (individual swap in split-tender)
@@ -390,7 +397,9 @@ export class DatabaseService {
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_intents_user ON intents(user_public_key)`);
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_intents_status ON intents(status)`);
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_intents_type ON intents(intent_type)`);
-    this.db.run(`CREATE INDEX IF NOT EXISTS idx_intents_next_execution ON intents(next_execution_at)`);
+    this.db.run(
+      `CREATE INDEX IF NOT EXISTS idx_intents_next_execution ON intents(next_execution_at)`
+    );
 
     // Payments table
     this.db.run(`
@@ -410,7 +419,9 @@ export class DatabaseService {
     `);
 
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_payments_payer ON payments(payer_public_key)`);
-    this.db.run(`CREATE INDEX IF NOT EXISTS idx_payments_merchant ON payments(merchant_public_key)`);
+    this.db.run(
+      `CREATE INDEX IF NOT EXISTS idx_payments_merchant ON payments(merchant_public_key)`
+    );
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status)`);
 
     // Payment links (invoices) table
@@ -427,9 +438,13 @@ export class DatabaseService {
       )
     `);
 
-    this.db.run(`CREATE INDEX IF NOT EXISTS idx_payment_links_merchant ON payment_links(merchant_id)`);
+    this.db.run(
+      `CREATE INDEX IF NOT EXISTS idx_payment_links_merchant ON payment_links(merchant_id)`
+    );
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_payment_links_status ON payment_links(status)`);
-    this.db.run(`CREATE INDEX IF NOT EXISTS idx_payment_links_expires ON payment_links(expires_at)`);
+    this.db.run(
+      `CREATE INDEX IF NOT EXISTS idx_payment_links_expires ON payment_links(expires_at)`
+    );
 
     // Notifications table
     this.db.run(`
@@ -446,9 +461,13 @@ export class DatabaseService {
       )
     `);
 
-    this.db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_public_key)`);
+    this.db.run(
+      `CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_public_key)`
+    );
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read)`);
-    this.db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at DESC)`);
+    this.db.run(
+      `CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at DESC)`
+    );
 
     // Receipt comparisons table (actual vs estimated)
     this.db.run(`
@@ -502,7 +521,9 @@ export class DatabaseService {
       )
     `);
 
-    this.db.run(`CREATE INDEX IF NOT EXISTS idx_execution_metrics_created ON execution_metrics(created_at DESC)`);
+    this.db.run(
+      `CREATE INDEX IF NOT EXISTS idx_execution_metrics_created ON execution_metrics(created_at DESC)`
+    );
 
     // Execution events table (timeline for receipts)
     this.db.run(`
@@ -524,8 +545,12 @@ export class DatabaseService {
       )
     `);
 
-    this.db.run(`CREATE INDEX IF NOT EXISTS idx_execution_events_receipt ON execution_events(receipt_id)`);
-    this.db.run(`CREATE INDEX IF NOT EXISTS idx_execution_events_timestamp ON execution_events(timestamp)`);
+    this.db.run(
+      `CREATE INDEX IF NOT EXISTS idx_execution_events_receipt ON execution_events(receipt_id)`
+    );
+    this.db.run(
+      `CREATE INDEX IF NOT EXISTS idx_execution_events_timestamp ON execution_events(timestamp)`
+    );
 
     // Token delegations table (for non-custodial DCA)
     this.db.run(`
@@ -545,9 +570,13 @@ export class DatabaseService {
       )
     `);
 
-    this.db.run(`CREATE INDEX IF NOT EXISTS idx_delegations_user ON token_delegations(user_public_key)`);
+    this.db.run(
+      `CREATE INDEX IF NOT EXISTS idx_delegations_user ON token_delegations(user_public_key)`
+    );
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_delegations_status ON token_delegations(status)`);
-    this.db.run(`CREATE INDEX IF NOT EXISTS idx_delegations_intent ON token_delegations(intent_id)`);
+    this.db.run(
+      `CREATE INDEX IF NOT EXISTS idx_delegations_intent ON token_delegations(intent_id)`
+    );
 
     // ==================== PortfolioPay V1 Tables ====================
 
@@ -636,8 +665,12 @@ export class DatabaseService {
       )
     `);
 
-    this.db.run(`CREATE INDEX IF NOT EXISTS idx_payment_quotes_invoice ON payment_quotes(invoice_id)`);
-    this.db.run(`CREATE INDEX IF NOT EXISTS idx_payment_quotes_expires ON payment_quotes(expires_at)`);
+    this.db.run(
+      `CREATE INDEX IF NOT EXISTS idx_payment_quotes_invoice ON payment_quotes(invoice_id)`
+    );
+    this.db.run(
+      `CREATE INDEX IF NOT EXISTS idx_payment_quotes_expires ON payment_quotes(expires_at)`
+    );
 
     // Payment attempts table
     this.db.run(`
@@ -659,8 +692,12 @@ export class DatabaseService {
       )
     `);
 
-    this.db.run(`CREATE INDEX IF NOT EXISTS idx_payment_attempts_invoice ON payment_attempts(invoice_id)`);
-    this.db.run(`CREATE INDEX IF NOT EXISTS idx_payment_attempts_quote ON payment_attempts(quote_id)`);
+    this.db.run(
+      `CREATE INDEX IF NOT EXISTS idx_payment_attempts_invoice ON payment_attempts(invoice_id)`
+    );
+    this.db.run(
+      `CREATE INDEX IF NOT EXISTS idx_payment_attempts_quote ON payment_attempts(quote_id)`
+    );
 
     // Attestations table
     this.db.run(`
@@ -700,7 +737,9 @@ export class DatabaseService {
       )
     `);
 
-    this.db.run(`CREATE INDEX IF NOT EXISTS idx_relayer_invoice ON relayer_submissions(invoice_id)`);
+    this.db.run(
+      `CREATE INDEX IF NOT EXISTS idx_relayer_invoice ON relayer_submissions(invoice_id)`
+    );
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_relayer_status ON relayer_submissions(status)`);
 
     // ==================== V1.5 Split-Tender Tables ====================
@@ -724,10 +763,16 @@ export class DatabaseService {
       )
     `);
 
-    this.db.run(`CREATE INDEX IF NOT EXISTS idx_reservations_invoice ON invoice_reservations(invoice_id)`);
+    this.db.run(
+      `CREATE INDEX IF NOT EXISTS idx_reservations_invoice ON invoice_reservations(invoice_id)`
+    );
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_reservations_payer ON invoice_reservations(payer)`);
-    this.db.run(`CREATE INDEX IF NOT EXISTS idx_reservations_status ON invoice_reservations(status)`);
-    this.db.run(`CREATE INDEX IF NOT EXISTS idx_reservations_expires ON invoice_reservations(expires_at)`);
+    this.db.run(
+      `CREATE INDEX IF NOT EXISTS idx_reservations_status ON invoice_reservations(status)`
+    );
+    this.db.run(
+      `CREATE INDEX IF NOT EXISTS idx_reservations_expires ON invoice_reservations(expires_at)`
+    );
 
     // Payment legs table (tracks individual token swaps in split-tender)
     this.db.run(`
@@ -759,7 +804,9 @@ export class DatabaseService {
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_legs_reservation ON payment_legs(reservation_id)`);
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_legs_invoice ON payment_legs(invoice_id)`);
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_legs_status ON payment_legs(status)`);
-    this.db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_legs_unique ON payment_legs(reservation_id, leg_index)`);
+    this.db.run(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_legs_unique ON payment_legs(reservation_id, leg_index)`
+    );
 
     this.log.debug('Database tables created');
   }
@@ -870,7 +917,7 @@ export class DatabaseService {
 
     if (result.length === 0) return [];
 
-    return result[0].values.map((row) => this.mapReceiptRow(result[0].columns, row));
+    return result[0].values.map(row => this.mapReceiptRow(result[0].columns, row));
   }
 
   private mapReceiptRow(columns: string[], values: any[]): ReceiptRecord {
@@ -1018,7 +1065,7 @@ export class DatabaseService {
 
     if (result.length === 0) return [];
 
-    return result[0].values.map((row) => this.mapIntentRow(result[0].columns, row));
+    return result[0].values.map(row => this.mapIntentRow(result[0].columns, row));
   }
 
   /**
@@ -1034,7 +1081,7 @@ export class DatabaseService {
 
     if (result.length === 0) return [];
 
-    return result[0].values.map((row) => this.mapIntentRow(result[0].columns, row));
+    return result[0].values.map(row => this.mapIntentRow(result[0].columns, row));
   }
 
   private mapIntentRow(columns: string[], values: any[]): Intent {
@@ -1142,7 +1189,7 @@ export class DatabaseService {
 
     if (result.length === 0) return [];
 
-    return result[0].values.map((row) => this.mapPaymentRow(result[0].columns, row));
+    return result[0].values.map(row => this.mapPaymentRow(result[0].columns, row));
   }
 
   private mapPaymentRow(columns: string[], values: any[]): PaymentRecord {
@@ -1197,10 +1244,11 @@ export class DatabaseService {
   ): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
-    this.db.run(
-      `UPDATE payment_links SET status = ?, updated_at = ? WHERE payment_id = ?`,
-      [status, Date.now(), paymentId]
-    );
+    this.db.run(`UPDATE payment_links SET status = ?, updated_at = ? WHERE payment_id = ?`, [
+      status,
+      Date.now(),
+      paymentId,
+    ]);
 
     this.saveToFile();
   }
@@ -1288,7 +1336,7 @@ export class DatabaseService {
 
     if (result.length === 0) return [];
 
-    return result[0].values.map((row) => {
+    return result[0].values.map(row => {
       const cols = result[0].columns;
       const obj: Record<string, any> = {};
       cols.forEach((col, idx) => {
@@ -1390,10 +1438,9 @@ export class DatabaseService {
   async getReceiptComparison(receiptId: string): Promise<any | null> {
     if (!this.db) throw new Error('Database not initialized');
 
-    const result = this.db.exec(
-      `SELECT * FROM receipt_comparisons WHERE receipt_id = ?`,
-      [receiptId]
-    );
+    const result = this.db.exec(`SELECT * FROM receipt_comparisons WHERE receipt_id = ?`, [
+      receiptId,
+    ]);
 
     if (result.length === 0 || result[0].values.length === 0) return null;
 
@@ -1460,7 +1507,7 @@ export class DatabaseService {
     );
 
     if (result.length === 0) return [];
-    return result[0].values.map((row) => this.mapReceiptRow(result[0].columns, row));
+    return result[0].values.map(row => this.mapReceiptRow(result[0].columns, row));
   }
 
   /**
@@ -1475,7 +1522,7 @@ export class DatabaseService {
     );
 
     if (result.length === 0) return [];
-    return result[0].values.map((row) => this.mapIntentRow(result[0].columns, row));
+    return result[0].values.map(row => this.mapIntentRow(result[0].columns, row));
   }
 
   /**
@@ -1487,7 +1534,7 @@ export class DatabaseService {
     const result = this.db.exec(`SELECT * FROM intents WHERE status = 'active'`);
 
     if (result.length === 0) return [];
-    return result[0].values.map((row) => this.mapIntentRow(result[0].columns, row));
+    return result[0].values.map(row => this.mapIntentRow(result[0].columns, row));
   }
 
   /**
@@ -1504,7 +1551,9 @@ export class DatabaseService {
     if (!this.db) throw new Error('Database not initialized');
 
     // Total unique users ever
-    const totalResult = this.db.exec(`SELECT COUNT(DISTINCT user_public_key) as count FROM receipts`);
+    const totalResult = this.db.exec(
+      `SELECT COUNT(DISTINCT user_public_key) as count FROM receipts`
+    );
     const totalUsers = totalResult.length > 0 ? (totalResult[0].values[0][0] as number) : 0;
 
     // Active users in period
@@ -1737,19 +1786,21 @@ export class DatabaseService {
   /**
    * Get jobs for an intent
    */
-  async getJobsByIntent(intentId: string): Promise<Array<{
-    id: string;
-    jobKey: string;
-    intentId: string;
-    scheduledAt: number;
-    status: string;
-    startedAt?: number;
-    completedAt?: number;
-    result?: string;
-    error?: string;
-    attempts: number;
-    createdAt: number;
-  }>> {
+  async getJobsByIntent(intentId: string): Promise<
+    Array<{
+      id: string;
+      jobKey: string;
+      intentId: string;
+      scheduledAt: number;
+      status: string;
+      startedAt?: number;
+      completedAt?: number;
+      result?: string;
+      error?: string;
+      attempts: number;
+      createdAt: number;
+    }>
+  > {
     if (!this.db) throw new Error('Database not initialized');
 
     const result = this.db.exec(
@@ -1759,22 +1810,24 @@ export class DatabaseService {
 
     if (result.length === 0) return [];
 
-    return result[0].values.map((row) => this.mapJobLockRow(result[0].columns, row));
+    return result[0].values.map(row => this.mapJobLockRow(result[0].columns, row));
   }
 
   /**
    * Get stale running jobs (for cleanup)
    */
-  async getStaleJobs(staleThresholdMs: number = 300000): Promise<Array<{
-    id: string;
-    jobKey: string;
-    intentId: string;
-    scheduledAt: number;
-    status: string;
-    startedAt?: number;
-    attempts: number;
-    createdAt: number;
-  }>> {
+  async getStaleJobs(staleThresholdMs: number = 300000): Promise<
+    Array<{
+      id: string;
+      jobKey: string;
+      intentId: string;
+      scheduledAt: number;
+      status: string;
+      startedAt?: number;
+      attempts: number;
+      createdAt: number;
+    }>
+  > {
     if (!this.db) throw new Error('Database not initialized');
 
     const threshold = Date.now() - staleThresholdMs;
@@ -1786,10 +1839,13 @@ export class DatabaseService {
 
     if (result.length === 0) return [];
 
-    return result[0].values.map((row) => this.mapJobLockRow(result[0].columns, row));
+    return result[0].values.map(row => this.mapJobLockRow(result[0].columns, row));
   }
 
-  private mapJobLockRow(columns: string[], values: any[]): {
+  private mapJobLockRow(
+    columns: string[],
+    values: any[]
+  ): {
     id: string;
     jobKey: string;
     intentId: string;
@@ -1869,9 +1925,7 @@ export class DatabaseService {
 
     if (result.length === 0) return [];
 
-    return result[0].values.map((row) =>
-      this.mapExecutionEventRow(result[0].columns, row)
-    );
+    return result[0].values.map(row => this.mapExecutionEventRow(result[0].columns, row));
   }
 
   private mapExecutionEventRow(columns: string[], values: any[]): ExecutionEventRecord {
@@ -1937,10 +1991,7 @@ export class DatabaseService {
   async getDelegation(delegationId: string): Promise<DelegationRecord | undefined> {
     if (!this.db) throw new Error('Database not initialized');
 
-    const result = this.db.exec(
-      `SELECT * FROM token_delegations WHERE id = ?`,
-      [delegationId]
-    );
+    const result = this.db.exec(`SELECT * FROM token_delegations WHERE id = ?`, [delegationId]);
 
     if (result.length === 0 || result[0].values.length === 0) {
       return undefined;
@@ -1962,15 +2013,16 @@ export class DatabaseService {
 
     if (result.length === 0) return [];
 
-    return result[0].values.map((row) =>
-      this.mapDelegationRow(result[0].columns, row)
-    );
+    return result[0].values.map(row => this.mapDelegationRow(result[0].columns, row));
   }
 
   /**
    * Get active delegation for user and token
    */
-  async getActiveDelegation(userPublicKey: string, tokenMint: string): Promise<DelegationRecord | undefined> {
+  async getActiveDelegation(
+    userPublicKey: string,
+    tokenMint: string
+  ): Promise<DelegationRecord | undefined> {
     if (!this.db) throw new Error('Database not initialized');
 
     const result = this.db.exec(
@@ -2010,7 +2062,10 @@ export class DatabaseService {
     );
 
     this.saveToFile();
-    this.log.debug({ delegationId: delegation.id, status: delegation.status }, 'Delegation updated');
+    this.log.debug(
+      { delegationId: delegation.id, status: delegation.status },
+      'Delegation updated'
+    );
   }
 
   /**
@@ -2251,7 +2306,7 @@ export class DatabaseService {
 
     if (result.length === 0) return [];
 
-    return result[0].values.map((row) => {
+    return result[0].values.map(row => {
       const mapped = this.mapRow(result[0].columns, row);
       return this.mapInvoiceRow(mapped);
     });
@@ -2362,7 +2417,7 @@ export class DatabaseService {
 
     if (result.length === 0) return [];
 
-    return result[0].values.map((row) => {
+    return result[0].values.map(row => {
       const mapped = this.mapRow(result[0].columns, row);
       return {
         id: mapped.id ? Number(mapped.id) : undefined,
@@ -2564,7 +2619,9 @@ export class DatabaseService {
     this.saveToFile();
   }
 
-  async getInvoiceReservation(reservationId: string): Promise<InvoiceReservationRecord | undefined> {
+  async getInvoiceReservation(
+    reservationId: string
+  ): Promise<InvoiceReservationRecord | undefined> {
     if (!this.db) throw new Error('Database not initialized');
 
     const result = this.db.exec(`SELECT * FROM invoice_reservations WHERE id = ?`, [reservationId]);
@@ -2707,16 +2764,13 @@ export class DatabaseService {
 
     if (result.length === 0) return [];
 
-    return result[0].values.map((row) => {
+    return result[0].values.map(row => {
       const mapped = this.mapRow(result[0].columns, row);
       return this.mapLegRow(mapped);
     });
   }
 
-  async updatePaymentLeg(
-    legId: string,
-    updates: Partial<PaymentLegRecord>
-  ): Promise<void> {
+  async updatePaymentLeg(legId: string, updates: Partial<PaymentLegRecord>): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
     const setClauses: string[] = [];
@@ -2772,7 +2826,7 @@ export class DatabaseService {
 
     if (result.length === 0) return [];
 
-    return result[0].values.map((row) => {
+    return result[0].values.map(row => {
       const mapped = this.mapRow(result[0].columns, row);
       return this.mapLegRow(mapped);
     });

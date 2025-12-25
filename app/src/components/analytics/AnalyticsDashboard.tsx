@@ -7,7 +7,6 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import {
   Activity,
@@ -20,6 +19,7 @@ import {
   ArrowUpRight,
   ArrowDownRight,
 } from 'lucide-react';
+import { useState, useEffect } from 'react';
 
 import { AnalyticsCharts } from './AnalyticsCharts';
 

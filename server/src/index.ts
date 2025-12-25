@@ -8,9 +8,9 @@ import 'dotenv/config';
 
 import { createApp } from './app.js';
 import { config } from './config/index.js';
-import { logger } from './utils/logger.js';
 import { DatabaseService } from './db/database.js';
 import { IntentScheduler } from './services/intentScheduler.js';
+import { logger } from './utils/logger.js';
 
 async function main(): Promise<void> {
   logger.info('Starting FlowMint Server...');
@@ -70,13 +70,13 @@ async function main(): Promise<void> {
     logger.error({ reason, promise }, 'Unhandled Rejection');
   });
 
-  process.on('uncaughtException', (error) => {
+  process.on('uncaughtException', error => {
     logger.fatal({ error }, 'Uncaught Exception');
     process.exit(1);
   });
 }
 
-main().catch((error) => {
+main().catch(error => {
   logger.fatal({ error }, 'Failed to start server');
   process.exit(1);
 });

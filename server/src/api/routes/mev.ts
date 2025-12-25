@@ -8,10 +8,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 
 import { DatabaseService } from '../../db/database.js';
-import {
-  getMEVProtectionService,
-  MEVProtectionMode,
-} from '../../services/mevProtectionService.js';
+import { getMEVProtectionService, MEVProtectionMode } from '../../services/mevProtectionService.js';
 import { logger } from '../../utils/logger.js';
 
 const log = logger.child({ route: 'mev' });

@@ -6,6 +6,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
+
 import { DatabaseService, InvoiceRecord, PolicyRecord, MerchantRecord } from '../db/database';
 
 // Constants
@@ -234,10 +235,7 @@ export class InvoiceService {
   /**
    * List invoices for a merchant
    */
-  async listMerchantInvoices(
-    merchantId: string,
-    status?: string
-  ): Promise<InvoiceRecord[]> {
+  async listMerchantInvoices(merchantId: string, status?: string): Promise<InvoiceRecord[]> {
     return this.db.getInvoicesByMerchant(merchantId, status);
   }
 
@@ -253,7 +251,10 @@ export class InvoiceService {
   /**
    * Validate invoice is payable
    */
-  async validatePayable(invoiceId: string, payerPublicKey: string): Promise<{
+  async validatePayable(
+    invoiceId: string,
+    payerPublicKey: string
+  ): Promise<{
     valid: boolean;
     error?: string;
     invoice?: InvoiceRecord;

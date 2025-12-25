@@ -22,10 +22,7 @@ const corsHeaders = {
 function getBackendBaseUrl(): string {
   // Prefer public backend URL (also available on the server runtime)
   return (
-    process.env.NEXT_PUBLIC_API_URL ||
-    process.env.API_URL ||
-    process.env.FLOWMINT_BACKEND_URL ||
-    ''
+    process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || process.env.FLOWMINT_BACKEND_URL || ''
   );
 }
 
@@ -46,7 +43,10 @@ export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders });
 }
 
-export async function GET(request: NextRequest, context: { params: Promise<{ segments: string[] }> }) {
+export async function GET(
+  request: NextRequest,
+  context: { params: Promise<{ segments: string[] }> }
+) {
   try {
     const { segments } = await context.params;
 

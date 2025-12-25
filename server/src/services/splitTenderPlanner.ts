@@ -5,8 +5,9 @@
  * Selects optimal token combination (max 2 legs) to reach exact USDC output.
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import { Connection, PublicKey } from '@solana/web3.js';
+import { v4 as uuidv4 } from 'uuid';
+
 import {
   DatabaseService,
   PolicyRecord,
@@ -14,8 +15,9 @@ import {
   InvoiceReservationRecord,
   PaymentLegRecord,
 } from '../db/database';
-import { jupiterService } from './jupiterService';
 import { logger } from '../utils/logger';
+
+import { jupiterService } from './jupiterService';
 
 // Constants
 const MAX_LEGS = 2;
@@ -101,12 +103,15 @@ export class SplitTenderPlanner {
   async plan(request: PlanRequest): Promise<PlanResult> {
     const { payMints, amountOut, settleMint, strategy, balances, policy } = request;
 
-    this.log.info({
-      invoiceId: request.invoiceId,
-      payMints,
-      amountOut,
-      strategy,
-    }, 'Planning split-tender payment');
+    this.log.info(
+      {
+        invoiceId: request.invoiceId,
+        payMints,
+        amountOut,
+        strategy,
+      },
+      'Planning split-tender payment'
+    );
 
     // Validate inputs
     if (payMints.length === 0) {
@@ -118,8 +123,8 @@ export class SplitTenderPlanner {
     }
 
     // Filter to tokens with balance
-    const availableTokens = payMints.filter((mint) => {
-      const balance = balances.find((b) => b.mint === mint);
+    const availableTokens = payMints.filter(mint => {
+      const balance = balances.find(b => b.mint === mint);
       return balance && BigInt(balance.balance) > 0n;
     });
 
@@ -129,7 +134,7 @@ export class SplitTenderPlanner {
 
     // If paying directly in settlement token
     if (availableTokens.length === 1 && availableTokens[0] === settleMint) {
-      const balance = balances.find((b) => b.mint === settleMint);
+      const balance = balances.find(b => b.mint === settleMint);
       if (balance && BigInt(balance.balance) >= BigInt(amountOut)) {
         return {
           success: true,
@@ -149,7 +154,7 @@ export class SplitTenderPlanner {
       );
 
       // Filter valid quotes
-      const validQuotes = legQuotes.filter((q) => q.valid);
+      const validQuotes = legQuotes.filter(q => q.valid);
 
       if (validQuotes.length === 0) {
         return { success: false, error: 'No valid swap routes found' };
@@ -188,8 +193,8 @@ export class SplitTenderPlanner {
   ): Promise<Array<{ mint: string; valid: boolean; quote?: any; leg?: LegPlan; balance: string }>> {
     const slippageBps = policy?.maxSlippageBps || DEFAULT_SLIPPAGE_BPS;
 
-    const quotePromises = mints.map(async (mint) => {
-      const balance = balances.find((b) => b.mint === mint);
+    const quotePromises = mints.map(async mint => {
+      const balance = balances.find(b => b.mint === mint);
       if (!balance) {
         return { mint, valid: false, balance: '0' };
       }
@@ -266,10 +271,10 @@ export class SplitTenderPlanner {
     quotes: Array<{ mint: string; valid: boolean; leg?: LegPlan; balance: string }>,
     targetAmount: string,
     strategy: SplitTenderStrategy,
-    policy?: PolicyRecord
+    _policy?: PolicyRecord
   ): SplitPlan | null {
     const targetBigInt = BigInt(targetAmount);
-    const validQuotes = quotes.filter((q) => q.valid && q.leg);
+    const validQuotes = quotes.filter(q => q.valid && q.leg);
 
     // Sort by strategy
     const sorted = this.sortByStrategy(validQuotes, strategy);
@@ -283,11 +288,13 @@ export class SplitTenderPlanner {
         const adjustedAmountIn = Math.ceil(Number(BigInt(q.leg.amountIn)) * ratio * 1.01); // 1% buffer
 
         return {
-          legs: [{
-            ...q.leg,
-            amountIn: adjustedAmountIn.toString(),
-            expectedUsdcOut: targetAmount,
-          }],
+          legs: [
+            {
+              ...q.leg,
+              amountIn: adjustedAmountIn.toString(),
+              expectedUsdcOut: targetAmount,
+            },
+          ],
           totalAmountIn: { [q.leg.payMint]: adjustedAmountIn.toString() },
           totalExpectedUsdcOut: targetAmount,
           settlementAmount: targetAmount,
@@ -365,7 +372,7 @@ export class SplitTenderPlanner {
       expectedUsdcOut: amount2.toString(),
     };
 
-    const combinedRiskScore = Math.round((leg1.risk.score + leg2.risk.score) / 2 * 1.2); // 20% penalty for split
+    const combinedRiskScore = Math.round(((leg1.risk.score + leg2.risk.score) / 2) * 1.2); // 20% penalty for split
     const combinedWarnings = [...leg1.risk.warnings, ...leg2.risk.warnings];
     combinedWarnings.push('Split payment: 2 transactions required');
 
@@ -488,17 +495,23 @@ export class SplitTenderPlanner {
   /**
    * Create plan for direct transfer (no swap needed)
    */
-  private createDirectTransferPlan(mint: string, amount: string, strategy: SplitTenderStrategy): SplitPlan {
+  private createDirectTransferPlan(
+    mint: string,
+    amount: string,
+    strategy: SplitTenderStrategy
+  ): SplitPlan {
     return {
-      legs: [{
-        payMint: mint,
-        amountIn: amount,
-        expectedUsdcOut: amount,
-        priceImpactBps: 0,
-        slippageBps: 0,
-        routeSteps: 0,
-        risk: { score: 0, priceImpactBps: 0, routeComplexity: 'simple', warnings: [] },
-      }],
+      legs: [
+        {
+          payMint: mint,
+          amountIn: amount,
+          expectedUsdcOut: amount,
+          priceImpactBps: 0,
+          slippageBps: 0,
+          routeSteps: 0,
+          risk: { score: 0, priceImpactBps: 0, routeComplexity: 'simple', warnings: [] },
+        },
+      ],
       totalAmountIn: { [mint]: amount },
       totalExpectedUsdcOut: amount,
       settlementAmount: amount,
@@ -561,13 +574,16 @@ export class SplitTenderPlanner {
       legs.push(leg);
     }
 
-    this.log.info({
-      reservationId,
-      invoiceId,
-      payer,
-      legsCount: legs.length,
-      expiresAt: reservation.expiresAt,
-    }, 'Split-tender reservation created');
+    this.log.info(
+      {
+        reservationId,
+        invoiceId,
+        payer,
+        legsCount: legs.length,
+        expiresAt: reservation.expiresAt,
+      },
+      'Split-tender reservation created'
+    );
 
     return { reservation, legs };
   }

@@ -29,12 +29,22 @@ export function createJupiterOrdersRoutes(): Router {
    */
   router.post('/recurring/create', async (req: Request, res: Response) => {
     try {
-      const { user, inputMint, outputMint, inAmount, numberOfOrders, interval, minPrice, maxPrice, startAt } =
-        req.body;
+      const {
+        user,
+        inputMint,
+        outputMint,
+        inAmount,
+        numberOfOrders,
+        interval,
+        minPrice,
+        maxPrice,
+        startAt,
+      } = req.body;
 
       if (!user || !inputMint || !outputMint || !inAmount || !numberOfOrders || !interval) {
         return res.status(400).json({
-          error: 'Missing required fields: user, inputMint, outputMint, inAmount, numberOfOrders, interval',
+          error:
+            'Missing required fields: user, inputMint, outputMint, inAmount, numberOfOrders, interval',
         });
       }
 
@@ -171,7 +181,8 @@ export function createJupiterOrdersRoutes(): Router {
 
       if (!inputMint || !outputMint || !maker || !makingAmount || !takingAmount) {
         return res.status(400).json({
-          error: 'Missing required fields: inputMint, outputMint, maker, makingAmount, takingAmount',
+          error:
+            'Missing required fields: inputMint, outputMint, maker, makingAmount, takingAmount',
         });
       }
 
@@ -330,9 +341,15 @@ export function createJupiterOrdersRoutes(): Router {
     try {
       const { makingAmount, takingAmount, inputDecimals, outputDecimals } = req.body;
 
-      if (!makingAmount || !takingAmount || inputDecimals === undefined || outputDecimals === undefined) {
+      if (
+        !makingAmount ||
+        !takingAmount ||
+        inputDecimals === undefined ||
+        outputDecimals === undefined
+      ) {
         return res.status(400).json({
-          error: 'Missing required fields: makingAmount, takingAmount, inputDecimals, outputDecimals',
+          error:
+            'Missing required fields: makingAmount, takingAmount, inputDecimals, outputDecimals',
         });
       }
 

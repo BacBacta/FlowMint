@@ -16,7 +16,6 @@ import { PublicKey } from '@solana/web3.js';
 import { v4 as uuidv4 } from 'uuid';
 
 import { config } from '../config/index.js';
-import { DatabaseService } from '../db/database.js';
 import {
   isTokenAllowed,
   calculateRiskLevel,
@@ -24,13 +23,14 @@ import {
   SLIPPAGE_SETTINGS,
   PRICE_IMPACT_THRESHOLDS,
 } from '../config/risk-policies.js';
+import { DatabaseService } from '../db/database.js';
 import { logger } from '../utils/logger.js';
 
+import { feeEstimator, ExecutionProfile as FeeProfile, FeeEstimate } from './feeEstimator.js';
 import { flowMintOnChainService } from './flowMintOnChain.js';
 import { jupiterService, QuoteResponse, JupiterError } from './jupiterService.js';
-import { rpcManager } from './rpcManager.js';
-
-// Import new production services
+import { getMetricsService, MetricsService } from './metricsService.js';
+import { ReceiptService, EnhancedReceipt } from './receiptService.js';
 import {
   classifyError,
   shouldRetry,
@@ -43,34 +43,16 @@ import {
   RetryMetrics,
   sleep as retrySleep,
 } from './retryPolicy.js';
-import {
-  RiskScoringService,
-  RiskSignal,
-  RiskAssessment,
-} from './riskScoring.js';
-import {
-  feeEstimator,
-  ExecutionProfile as FeeProfile,
-  FeeEstimate,
-} from './feeEstimator.js';
-import {
-  txConfirmService,
-  ConfirmationResult,
-} from './txConfirm.js';
-import {
-  ReceiptService,
-  EnhancedReceipt,
-} from './receiptService.js';
-import {
-  getMetricsService,
-  MetricsService,
-} from './metricsService.js';
+import { RiskScoringService, RiskSignal, RiskAssessment } from './riskScoring.js';
+import { rpcManager } from './rpcManager.js';
+
+// Import new production services
+import { txConfirmService, ConfirmationResult } from './txConfirm.js';
 
 /**
  * Execution mode for speed/reliability tradeoff
  */
 export type ExecutionMode = 'fast' | 'standard' | 'protected';
-
 
 /**
  * Swap request from client
@@ -256,7 +238,8 @@ export class ExecutionEngine {
     this.retryCount = 0;
 
     // Determine execution mode and profile
-    const executionMode = request.executionMode || (request.protectedMode ? 'protected' : 'standard');
+    const executionMode =
+      request.executionMode || (request.protectedMode ? 'protected' : 'standard');
     const feeProfile = EXECUTION_MODE_TO_FEE_PROFILE[executionMode];
     const retryStrategy = EXECUTION_PROFILES[feeProfile === 'FAST' ? 'FAST' : 'AUTO'];
 
@@ -562,6 +545,7 @@ export class ExecutionEngine {
     strategy: RetryStrategy,
     state: RetryState
   ): Promise<QuoteResponse> {
+    // eslint-disable-next-line no-constant-condition
     while (true) {
       try {
         state.attempts++;
@@ -577,7 +561,9 @@ export class ExecutionEngine {
 
         return quote;
       } catch (error) {
-        const classifiedError = classifyError(error instanceof Error ? error : new Error(String(error)));
+        const classifiedError = classifyError(
+          error instanceof Error ? error : new Error(String(error))
+        );
         state.errors.push(classifiedError);
 
         const retryDecision = shouldRetry(classifiedError, state, strategy);
@@ -870,10 +856,7 @@ export class ExecutionEngine {
         }
 
         if (attempt < retryConfig.maxRetries) {
-          this.log.warn(
-            { attempt, delay, error: lastError.message },
-            'Quote failed, retrying...'
-          );
+          this.log.warn({ attempt, delay, error: lastError.message }, 'Quote failed, retrying...');
 
           // Try with increased slippage on retry
           if (attempt > 0 && !request.protectedMode) {
@@ -932,14 +915,14 @@ export class ExecutionEngine {
         const estimatedOutput = BigInt(receipt.outAmount);
         const actual = BigInt(actualOutput);
         const difference = actual - estimatedOutput;
-        const differencePercent = estimatedOutput > 0n
-          ? Number(difference * 10000n / estimatedOutput) / 100
-          : 0;
+        const differencePercent =
+          estimatedOutput > 0n ? Number((difference * 10000n) / estimatedOutput) / 100 : 0;
 
         // Calculate actual slippage
-        const actualSlippage = estimatedOutput > 0n
-          ? Number((estimatedOutput - actual) * 10000n / estimatedOutput) / 100
-          : 0;
+        const actualSlippage =
+          estimatedOutput > 0n
+            ? Number(((estimatedOutput - actual) * 10000n) / estimatedOutput) / 100
+            : 0;
 
         const executionTimeMs = Date.now() - receipt.timestamp;
 
@@ -1002,7 +985,12 @@ export class ExecutionEngine {
       const confirmation = await connection.confirmTransaction(txSignature, 'confirmed');
 
       if (confirmation.value.err) {
-        await this.updateReceiptStatus(receiptId, 'failed', txSignature, 'Transaction failed on-chain');
+        await this.updateReceiptStatus(
+          receiptId,
+          'failed',
+          txSignature,
+          'Transaction failed on-chain'
+        );
         return { success: false };
       }
 
@@ -1068,6 +1056,6 @@ export class ExecutionEngine {
    * Sleep utility
    */
   private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 }

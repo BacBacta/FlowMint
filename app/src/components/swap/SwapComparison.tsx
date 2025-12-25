@@ -7,8 +7,8 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
 import { Check, AlertTriangle, X, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { useState, useEffect } from 'react';
 
 // Use relative path for Next.js API routes
 const API_BASE = '/api';

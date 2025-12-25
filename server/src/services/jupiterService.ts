@@ -6,8 +6,8 @@
  * @see https://docs.jup.ag for API documentation
  */
 
-import axios, { AxiosInstance, AxiosError } from 'axios';
 import { Connection, PublicKey, VersionedTransaction, TransactionMessage } from '@solana/web3.js';
+import axios, { AxiosInstance, AxiosError } from 'axios';
 
 import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
@@ -376,9 +376,7 @@ export class JupiterService {
   async getTokenList(tags?: string[]): Promise<TokenInfo[]> {
     try {
       const params = tags ? `?tags=${tags.join(',')}` : '';
-      const response = await axios.get<TokenInfo[]>(
-        `https://tokens.jup.ag/tokens${params}`
-      );
+      const response = await axios.get<TokenInfo[]>(`https://tokens.jup.ag/tokens${params}`);
       return response.data;
     } catch (error) {
       throw this.handleError(error, 'Failed to get token list');
@@ -459,7 +457,11 @@ export class JupiterService {
         return new JupiterError('Rate limited - please retry later', 'RATE_LIMITED', statusCode);
       }
       if (statusCode && statusCode >= 500) {
-        return new JupiterError('Jupiter API is temporarily unavailable', 'SERVICE_ERROR', statusCode);
+        return new JupiterError(
+          'Jupiter API is temporarily unavailable',
+          'SERVICE_ERROR',
+          statusCode
+        );
       }
 
       return new JupiterError(`${context}: ${message}`, 'API_ERROR', statusCode);

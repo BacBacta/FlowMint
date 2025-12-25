@@ -129,9 +129,7 @@ export class FeeEstimator {
 
       // Calculate percentile priority fee
       const sortedFees = [...stats.recentPriorityFees].sort((a, b) => a - b);
-      const percentileIndex = Math.floor(
-        (settings.targetPercentile / 100) * sortedFees.length
-      );
+      const percentileIndex = Math.floor((settings.targetPercentile / 100) * sortedFees.length);
       const basePriorityFee = sortedFees[percentileIndex] || settings.minPriorityFee;
 
       // Apply profile multiplier
@@ -150,8 +148,7 @@ export class FeeEstimator {
 
       // Determine congestion level
       const avgFee =
-        stats.recentPriorityFees.reduce((a, b) => a + b, 0) /
-        stats.recentPriorityFees.length;
+        stats.recentPriorityFees.reduce((a, b) => a + b, 0) / stats.recentPriorityFees.length;
       const congestionLevel = this.determineCongestion(avgFee);
 
       // Confidence based on sample size and freshness
@@ -232,9 +229,7 @@ export class FeeEstimator {
       }
 
       // Extract fees and filter outliers
-      const fees = response
-        .map((f) => f.prioritizationFee)
-        .filter((f) => f > 0 && f < 10_000_000); // Filter extreme outliers
+      const fees = response.map(f => f.prioritizationFee).filter(f => f > 0 && f < 10_000_000); // Filter extreme outliers
 
       if (fees.length === 0) {
         return [CONGESTION_THRESHOLDS.low];

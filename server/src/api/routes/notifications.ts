@@ -55,19 +55,22 @@ export function createNotificationRoutes(db: DatabaseService): Router {
    *
    * Get unread notification count
    */
-  router.get('/:userPublicKey/unread-count', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const { userPublicKey } = req.params;
-      const count = await notificationService.getUnreadCount(userPublicKey);
+  router.get(
+    '/:userPublicKey/unread-count',
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const { userPublicKey } = req.params;
+        const count = await notificationService.getUnreadCount(userPublicKey);
 
-      res.json({
-        success: true,
-        data: { count },
-      });
-    } catch (error) {
-      next(error);
+        res.json({
+          success: true,
+          data: { count },
+        });
+      } catch (error) {
+        next(error);
+      }
     }
-  });
+  );
 
   /**
    * POST /api/v1/notifications/:id/read
@@ -93,19 +96,22 @@ export function createNotificationRoutes(db: DatabaseService): Router {
    *
    * Mark all notifications as read
    */
-  router.post('/:userPublicKey/read-all', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const { userPublicKey } = req.params;
-      await notificationService.markAllAsRead(userPublicKey);
+  router.post(
+    '/:userPublicKey/read-all',
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const { userPublicKey } = req.params;
+        await notificationService.markAllAsRead(userPublicKey);
 
-      res.json({
-        success: true,
-        message: 'All notifications marked as read',
-      });
-    } catch (error) {
-      next(error);
+        res.json({
+          success: true,
+          message: 'All notifications marked as read',
+        });
+      } catch (error) {
+        next(error);
+      }
     }
-  });
+  );
 
   return router;
 }

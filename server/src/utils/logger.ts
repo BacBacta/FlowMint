@@ -29,7 +29,7 @@ export const logger = pino({
     env: config.nodeEnv,
   },
   formatters: {
-    level: (label) => ({ level: label }),
+    level: label => ({ level: label }),
   },
 });
 

@@ -8,11 +8,10 @@
  * - Traffic light scoring (GREEN, AMBER, RED)
  */
 
-import { Connection, PublicKey } from '@solana/web3.js';
 import { getMint, getAccount, TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import { Connection, PublicKey } from '@solana/web3.js';
 
 import { config } from '../config/index.js';
-import { logger } from '../utils/logger.js';
 import {
   SLIPPAGE_SETTINGS,
   PRICE_IMPACT_THRESHOLDS,
@@ -22,6 +21,8 @@ import {
   TOKEN_WHITELIST,
   KNOWN_TOKENS,
 } from '../config/risk-policies.js';
+import { logger } from '../utils/logger.js';
+
 import { QuoteResponse } from './jupiterService.js';
 
 const log = logger.child({ service: 'RiskScoring' });
@@ -115,18 +116,12 @@ export class RiskScoringService {
   /**
    * Score a swap request with quote
    */
-  async scoreSwap(
-    request: ScoreSwapRequest,
-    quote: QuoteResponse
-  ): Promise<RiskAssessment> {
+  async scoreSwap(request: ScoreSwapRequest, quote: QuoteResponse): Promise<RiskAssessment> {
     const timestamp = Date.now();
     const reasons: RiskReason[] = [];
     const thresholdsUsed: Record<string, number> = {};
 
-    log.debug(
-      { inputMint: request.inputMint, outputMint: request.outputMint },
-      'Scoring swap'
-    );
+    log.debug({ inputMint: request.inputMint, outputMint: request.outputMint }, 'Scoring swap');
 
     // 1. Score quote mechanics
     this.scoreQuoteMechanics(quote, request, reasons, thresholdsUsed);
@@ -156,11 +151,9 @@ export class RiskScoringService {
 
     // Determine blocking rules
     const blockedInProtectedMode =
-      level === RiskSignal.RED ||
-      (request.protectedMode && level === RiskSignal.AMBER);
+      level === RiskSignal.RED || (request.protectedMode && level === RiskSignal.AMBER);
 
-    const requiresAcknowledgement =
-      level === RiskSignal.AMBER && !request.protectedMode;
+    const requiresAcknowledgement = level === RiskSignal.AMBER && !request.protectedMode;
 
     log.info(
       {
@@ -428,8 +421,7 @@ export class RiskScoringService {
         decimals: mintInfo.decimals,
         isKnownToken: this.isKnownToken(mint),
         isBlacklisted: TOKEN_BLACKLIST.includes(mint),
-        isWhitelisted:
-          TOKEN_WHITELIST.length === 0 || TOKEN_WHITELIST.includes(mint),
+        isWhitelisted: TOKEN_WHITELIST.length === 0 || TOKEN_WHITELIST.includes(mint),
       };
 
       // Cache the result
@@ -476,8 +468,8 @@ export class RiskScoringService {
    * Calculate overall risk level from reasons
    */
   private calculateOverallLevel(reasons: RiskReason[]): RiskSignal {
-    const hasRed = reasons.some((r) => r.severity === RiskSignal.RED);
-    const hasAmber = reasons.some((r) => r.severity === RiskSignal.AMBER);
+    const hasRed = reasons.some(r => r.severity === RiskSignal.RED);
+    const hasAmber = reasons.some(r => r.severity === RiskSignal.AMBER);
 
     if (hasRed) return RiskSignal.RED;
     if (hasAmber) return RiskSignal.AMBER;

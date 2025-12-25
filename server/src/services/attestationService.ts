@@ -5,17 +5,14 @@
  * Signs planned vs actual execution data with Ed25519.
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import * as crypto from 'crypto';
+
 import { Keypair } from '@solana/web3.js';
-import nacl from 'tweetnacl';
 import bs58 from 'bs58';
-import {
-  DatabaseService,
-  AttestationRecord,
-  PolicyRecord,
-  InvoiceRecord,
-} from '../db/database';
+import nacl from 'tweetnacl';
+import { v4 as uuidv4 } from 'uuid';
+
+import { DatabaseService, AttestationRecord, PolicyRecord, InvoiceRecord } from '../db/database';
 
 // Attestation payload structure
 export interface AttestationPayload {
@@ -222,20 +219,12 @@ export class AttestationService {
    * Create and sign an attestation
    */
   async createAttestation(params: CreateAttestationParams): Promise<AttestationRecord> {
-    const {
-      invoiceId,
-      policy,
-      planned,
-      actual,
-      signerKeypair,
-    } = params;
+    const { invoiceId, policy, planned, actual, signerKeypair } = params;
 
     // Validate against policy first
     const validation = this.validateAgainstPolicy(planned, policy);
     if (!validation.valid) {
-      throw new Error(
-        `Policy violation: ${validation.violations.map((v) => v.message).join('; ')}`
-      );
+      throw new Error(`Policy violation: ${validation.violations.map(v => v.message).join('; ')}`);
     }
 
     // Build attestation payload

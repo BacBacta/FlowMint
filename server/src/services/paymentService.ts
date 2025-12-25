@@ -10,12 +10,18 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { config } from '../config/index.js';
 import { KNOWN_TOKENS } from '../config/risk-policies.js';
-import { logger } from '../utils/logger.js';
-import { jupiterService } from './jupiterService.js';
-import { flowMintOnChainService } from './flowMintOnChain.js';
 import { DatabaseService, PolicyRecord, PaymentQuoteRecord } from '../db/database.js';
+import { logger } from '../utils/logger.js';
+
+import {
+  AttestationService,
+  PlannedExecution,
+  ActualExecution,
+  RouteHop,
+} from './attestationService.js';
+import { flowMintOnChainService } from './flowMintOnChain.js';
 import { InvoiceService } from './invoiceService.js';
-import { AttestationService, PlannedExecution, ActualExecution, RouteHop } from './attestationService.js';
+import { jupiterService } from './jupiterService.js';
 import { RelayerService } from './relayerService.js';
 
 /**
@@ -290,7 +296,7 @@ export class PaymentService {
         expiresAt: now + this.QUOTE_TTL_MS,
         route: {
           steps: hops,
-          labels: exactOutQuote.routePlan.map((step) => step.swapInfo.label),
+          labels: exactOutQuote.routePlan.map(step => step.swapInfo.label),
         },
         mode: 'ExactOut',
         risk: {
@@ -308,11 +314,7 @@ export class PaymentService {
 
     // Fallback: ExactIn mode with refund
     // Estimate input amount needed (add 2% buffer for safety)
-    const estimatedInputForExactIn = await this.estimateInputAmount(
-      payMint,
-      settleMint,
-      amountOut
-    );
+    const estimatedInputForExactIn = await this.estimateInputAmount(payMint, settleMint, amountOut);
 
     const exactInQuote = await jupiterService.quoteSwap({
       inputMint: payMint,
@@ -328,7 +330,8 @@ export class PaymentService {
     // Calculate refund (output - required)
     const outputAmount = BigInt(exactInQuote.outAmount);
     const requiredAmount = BigInt(amountOut);
-    const refundAmount = outputAmount > requiredAmount ? (outputAmount - requiredAmount).toString() : '0';
+    const refundAmount =
+      outputAmount > requiredAmount ? (outputAmount - requiredAmount).toString() : '0';
 
     const warnings: string[] = ['Using ExactIn mode with potential refund'];
     if (refundAmount !== '0') {
@@ -345,7 +348,7 @@ export class PaymentService {
       expiresAt: now + this.QUOTE_TTL_MS,
       route: {
         steps: hops,
-        labels: exactInQuote.routePlan.map((step) => step.swapInfo.label),
+        labels: exactInQuote.routePlan.map(step => step.swapInfo.label),
       },
       mode: 'ExactIn',
       refundAmount,
@@ -386,18 +389,14 @@ export class PaymentService {
       return estimatedInput.toString();
     } catch {
       // Fallback: assume 1:1 with buffer
-      return (BigInt(targetOutput) * 102n / 100n).toString();
+      return ((BigInt(targetOutput) * 102n) / 100n).toString();
     }
   }
 
   /**
    * Save quote to database for tracking
    */
-  async saveQuote(
-    quote: ExtendedPaymentQuote,
-    invoiceId: string,
-    payer: string
-  ): Promise<void> {
+  async saveQuote(quote: ExtendedPaymentQuote, invoiceId: string, payer: string): Promise<void> {
     const quoteRecord: PaymentQuoteRecord = {
       id: quote.quoteId,
       invoiceId,
@@ -555,7 +554,7 @@ export class PaymentService {
       expiresAt: Date.now() + 30000, // 30 seconds
       route: {
         steps: quote.routePlan.length,
-        labels: quote.routePlan.map((step) => step.swapInfo.label),
+        labels: quote.routePlan.map(step => step.swapInfo.label),
       },
     };
   }
@@ -581,18 +580,13 @@ export class PaymentService {
 
     try {
       // Validate payer balance
-      const balance = await this.getTokenBalance(
-        request.payerPublicKey,
-        request.tokenFrom
-      );
+      const balance = await this.getTokenBalance(request.payerPublicKey, request.tokenFrom);
 
       // Get quote
       const quote = await this.getPaymentQuote(request);
 
       if (BigInt(balance) < BigInt(quote.maxInputAmount)) {
-        throw new Error(
-          `Insufficient balance: have ${balance}, need ${quote.maxInputAmount}`
-        );
+        throw new Error(`Insufficient balance: have ${balance}, need ${quote.maxInputAmount}`);
       }
 
       // Direct USDC transfer
@@ -631,7 +625,12 @@ export class PaymentService {
       let routeData: string | undefined;
 
       // Step: Inject FlowMint instruction if using on-chain program
-      if (request.useFlowMintProgram && request.payerInputAccount && request.payerUsdcAccount && request.merchantUsdcAccount) {
+      if (
+        request.useFlowMintProgram &&
+        request.payerInputAccount &&
+        request.payerUsdcAccount &&
+        request.merchantUsdcAccount
+      ) {
         const payerPubkey = new PublicKey(request.payerPublicKey);
         const merchantPubkey = new PublicKey(request.merchantPublicKey);
         const routeBuffer = flowMintOnChainService.serializeRoute(jupiterQuote);
@@ -639,7 +638,11 @@ export class PaymentService {
 
         // Get payment record PDA for reference
         const txTimestamp = Math.floor(timestamp / 1000);
-        const [recordPDA] = flowMintOnChainService.getPaymentRecordPDA(payerPubkey, merchantPubkey, txTimestamp);
+        const [recordPDA] = flowMintOnChainService.getPaymentRecordPDA(
+          payerPubkey,
+          merchantPubkey,
+          txTimestamp
+        );
         paymentRecordPda = recordPDA.toString();
 
         // Build FlowMint pay_any_token instruction

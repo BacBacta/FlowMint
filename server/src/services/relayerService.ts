@@ -5,7 +5,6 @@
  * Validates, co-signs, and broadcasts transactions on behalf of users.
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import {
   Connection,
   Keypair,
@@ -16,6 +15,8 @@ import {
   PublicKey,
 } from '@solana/web3.js';
 import bs58 from 'bs58';
+import { v4 as uuidv4 } from 'uuid';
+
 import { DatabaseService, RelayerSubmissionRecord } from '../db/database';
 
 // Constants
@@ -177,7 +178,7 @@ export class RelayerService {
       if (!feePayer.equals(payerPubkey)) {
         // For gasless, the relayer might be fee payer
         // But user should still be a signer
-        const payerIndex = messageAccountKeys.findIndex((k) => k.equals(payerPubkey));
+        const payerIndex = messageAccountKeys.findIndex(k => k.equals(payerPubkey));
         if (payerIndex === -1) {
           errors.push('Payer not found in transaction accounts');
         }
@@ -249,7 +250,7 @@ export class RelayerService {
       if (this.relayerKeypair) {
         // Check if relayer needs to sign (as fee payer)
         const messageAccountKeys = transaction.message.staticAccountKeys;
-        const relayerIndex = messageAccountKeys.findIndex((k) =>
+        const relayerIndex = messageAccountKeys.findIndex(k =>
           k.equals(this.relayerKeypair!.publicKey)
         );
 
@@ -304,7 +305,7 @@ export class RelayerService {
           }
 
           // Wait before retry
-          await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS * (attempt + 1)));
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * (attempt + 1)));
         }
       }
 
@@ -378,7 +379,7 @@ export class RelayerService {
       }
 
       // Wait before next poll
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 2000));
     }
 
     return {

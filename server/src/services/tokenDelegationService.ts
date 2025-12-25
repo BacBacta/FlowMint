@@ -313,10 +313,7 @@ export class TokenDelegationService {
 
       return { valid: true, delegation: activeDelegation };
     } catch (err: unknown) {
-      log.error(
-        { err, delegationId: activeDelegation.id },
-        'Failed to verify delegation on-chain'
-      );
+      log.error({ err, delegationId: activeDelegation.id }, 'Failed to verify delegation on-chain');
       return { valid: false, message: 'Failed to verify delegation on-chain' };
     }
   }

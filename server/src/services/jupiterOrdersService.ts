@@ -255,7 +255,9 @@ export class JupiterOrdersService {
   /**
    * Create a time-based recurring order (DCA)
    */
-  async createRecurringOrder(request: CreateRecurringOrderRequest): Promise<CreateRecurringOrderResponse> {
+  async createRecurringOrder(
+    request: CreateRecurringOrderRequest
+  ): Promise<CreateRecurringOrderResponse> {
     try {
       log.info(
         {
@@ -268,12 +270,12 @@ export class JupiterOrdersService {
         'Creating recurring order'
       );
 
-      const response = await this.recurringClient.post<CreateRecurringOrderResponse>('/createOrder', request);
-
-      log.info(
-        { requestId: response.data.requestId },
-        'Recurring order created'
+      const response = await this.recurringClient.post<CreateRecurringOrderResponse>(
+        '/createOrder',
+        request
       );
+
+      log.info({ requestId: response.data.requestId }, 'Recurring order created');
 
       return response.data;
     } catch (error: unknown) {
@@ -356,7 +358,9 @@ export class JupiterOrdersService {
   /**
    * Create a trigger (limit) order
    */
-  async createTriggerOrder(request: CreateTriggerOrderRequest): Promise<CreateTriggerOrderResponse> {
+  async createTriggerOrder(
+    request: CreateTriggerOrderRequest
+  ): Promise<CreateTriggerOrderResponse> {
     try {
       log.info(
         {
@@ -432,10 +436,7 @@ export class JupiterOrdersService {
   /**
    * Get trigger orders for a user
    */
-  async getTriggerOrders(
-    maker: string,
-    status?: 'open' | 'historical'
-  ): Promise<TriggerOrder[]> {
+  async getTriggerOrders(maker: string, status?: 'open' | 'historical'): Promise<TriggerOrder[]> {
     try {
       const params: Record<string, string> = { maker };
       if (status) {

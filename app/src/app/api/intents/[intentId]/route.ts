@@ -17,16 +17,16 @@ export async function OPTIONS() {
 }
 
 export async function GET(
-  request: NextRequest,
-  { params }: { params: { intentId: string } }
+  _request: NextRequest,
+  { params: _params }: { params: { intentId: string } }
 ) {
   // Return empty array for user intents
   return NextResponse.json([], { headers: corsHeaders });
 }
 
 export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { intentId: string } }
+  _request: NextRequest,
+  { params: _params }: { params: { intentId: string } }
 ) {
   return NextResponse.json(
     {

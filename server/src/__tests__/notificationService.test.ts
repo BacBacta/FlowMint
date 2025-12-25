@@ -4,44 +4,44 @@
  * Unit tests for the Notification Service.
  */
 
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, jest, afterEach } from '@jest/globals';
 
 // Mock DatabaseService
 const mockDb = {
-  saveNotification: vi.fn().mockResolvedValue(undefined),
-  getUserNotifications: vi.fn().mockResolvedValue([]),
-  markNotificationRead: vi.fn().mockResolvedValue(undefined),
+  saveNotification: jest.fn().mockResolvedValue(undefined),
+  getUserNotifications: jest.fn().mockResolvedValue([]),
+  markNotificationRead: jest.fn().mockResolvedValue(undefined),
 };
 
-vi.mock('../db/database.js', () => ({
-  DatabaseService: vi.fn().mockImplementation(() => mockDb),
+jest.mock('../db/database.js', () => ({
+  DatabaseService: jest.fn().mockImplementation(() => mockDb),
 }));
 
 // Mock logger
-vi.mock('../utils/logger.js', () => ({
+jest.mock('../utils/logger.js', () => ({
   logger: {
     child: () => ({
-      info: vi.fn(),
-      debug: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
+      info: jest.fn(),
+      debug: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
     }),
   },
 }));
 
 describe('NotificationService', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    jest.clearAllMocks();
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    jest.restoreAllMocks();
   });
 
   describe('Notification Types', () => {
     it('should export all notification types', async () => {
       const { NotificationType } = await import('../services/notificationService.js');
-      
+
       expect(NotificationType.DCA_EXECUTED).toBeDefined();
       expect(NotificationType.STOP_LOSS_TRIGGERED).toBeDefined();
       expect(NotificationType.SWAP_SUCCESS).toBeDefined();
@@ -51,7 +51,7 @@ describe('NotificationService', () => {
 
     it('should export all priority levels', async () => {
       const { NotificationPriority } = await import('../services/notificationService.js');
-      
+
       expect(NotificationPriority.LOW).toBeDefined();
       expect(NotificationPriority.NORMAL).toBeDefined();
       expect(NotificationPriority.HIGH).toBeDefined();
@@ -63,21 +63,22 @@ describe('NotificationService', () => {
     it('should initialize service with database', async () => {
       const { NotificationService } = await import('../services/notificationService.js');
       const { DatabaseService } = await import('../db/database.js');
-      
+
       const db = new DatabaseService(':memory:');
       NotificationService.initialize(db);
-      
+
       // Should not throw
       expect(true).toBe(true);
     });
 
     it('should send notification via notify method', async () => {
-      const { NotificationService, NotificationType, NotificationPriority } = await import('../services/notificationService.js');
+      const { NotificationService, NotificationType, NotificationPriority } =
+        await import('../services/notificationService.js');
       const { DatabaseService } = await import('../db/database.js');
-      
+
       const db = new DatabaseService(':memory:');
       NotificationService.initialize(db);
-      
+
       await NotificationService.notify({
         userId: 'test-user-public-key',
         type: NotificationType.SWAP_SUCCESS,
@@ -85,7 +86,7 @@ describe('NotificationService', () => {
         message: 'This is a test',
         priority: NotificationPriority.NORMAL,
       });
-      
+
       // Verify DB was called
       expect(mockDb.saveNotification).toHaveBeenCalled();
     });
@@ -95,10 +96,10 @@ describe('NotificationService', () => {
     it('should send DCA executed notification on success', async () => {
       const { NotificationService } = await import('../services/notificationService.js');
       const { DatabaseService } = await import('../db/database.js');
-      
+
       const db = new DatabaseService(':memory:');
       NotificationService.initialize(db);
-      
+
       await NotificationService.notifyDCAExecuted(
         'user-public-key',
         'intent-123',
@@ -106,7 +107,7 @@ describe('NotificationService', () => {
         '1000000000',
         true
       );
-      
+
       expect(mockDb.saveNotification).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: 'user-public-key',
@@ -118,10 +119,10 @@ describe('NotificationService', () => {
     it('should send DCA failure notification with error', async () => {
       const { NotificationService } = await import('../services/notificationService.js');
       const { DatabaseService } = await import('../db/database.js');
-      
+
       const db = new DatabaseService(':memory:');
       NotificationService.initialize(db);
-      
+
       await NotificationService.notifyDCAExecuted(
         'user-public-key',
         'intent-123',
@@ -130,7 +131,7 @@ describe('NotificationService', () => {
         false,
         'Transaction simulation failed'
       );
-      
+
       expect(mockDb.saveNotification).toHaveBeenCalled();
     });
   });
@@ -139,10 +140,10 @@ describe('NotificationService', () => {
     it('should send stop-loss triggered notification', async () => {
       const { NotificationService } = await import('../services/notificationService.js');
       const { DatabaseService } = await import('../db/database.js');
-      
+
       const db = new DatabaseService(':memory:');
       NotificationService.initialize(db);
-      
+
       await NotificationService.notifyStopLossTriggered(
         'user-public-key',
         'intent-456',
@@ -150,7 +151,7 @@ describe('NotificationService', () => {
         98.5,
         true
       );
-      
+
       expect(mockDb.saveNotification).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: 'user-public-key',
@@ -162,10 +163,10 @@ describe('NotificationService', () => {
     it('should include price information in stop-loss notification', async () => {
       const { NotificationService } = await import('../services/notificationService.js');
       const { DatabaseService } = await import('../db/database.js');
-      
+
       const db = new DatabaseService(':memory:');
       NotificationService.initialize(db);
-      
+
       await NotificationService.notifyStopLossTriggered(
         'user-public-key',
         'intent-789',
@@ -173,7 +174,7 @@ describe('NotificationService', () => {
         48.0,
         true
       );
-      
+
       const call = mockDb.saveNotification.mock.calls[0][0];
       expect(call.metadata).toBeDefined();
       expect(call.metadata.triggerPrice).toBe(50.0);
@@ -185,33 +186,33 @@ describe('NotificationService', () => {
     it('should send swap success notification', async () => {
       const { NotificationService } = await import('../services/notificationService.js');
       const { DatabaseService } = await import('../db/database.js');
-      
+
       const db = new DatabaseService(':memory:');
       NotificationService.initialize(db);
-      
+
       await NotificationService.notifySwapSuccess(
         'user-public-key',
         'receipt-abc',
         '1000000000',
         '950000'
       );
-      
+
       expect(mockDb.saveNotification).toHaveBeenCalled();
     });
 
     it('should send swap failed notification', async () => {
       const { NotificationService } = await import('../services/notificationService.js');
       const { DatabaseService } = await import('../db/database.js');
-      
+
       const db = new DatabaseService(':memory:');
       NotificationService.initialize(db);
-      
+
       await NotificationService.notifySwapFailed(
         'user-public-key',
         'receipt-def',
         'Slippage exceeded'
       );
-      
+
       expect(mockDb.saveNotification).toHaveBeenCalled();
     });
   });

@@ -6,7 +6,7 @@
 
 'use client';
 
-import { AlertTriangle, CheckCircle, XCircle, Info } from 'lucide-react';
+import { AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
 
 export type RiskLevel = 'GREEN' | 'AMBER' | 'RED';
 
@@ -117,12 +117,7 @@ const DOT_SIZES = {
   lg: 'w-4 h-4',
 };
 
-export function RiskDot({
-  level,
-  size = 'md',
-  pulse = false,
-  className = '',
-}: RiskDotProps) {
+export function RiskDot({ level, size = 'md', pulse = false, className = '' }: RiskDotProps) {
   return (
     <span className={`relative inline-flex ${className}`}>
       <span
@@ -134,7 +129,7 @@ export function RiskDot({
       {pulse && (
         <span
           className={`
-            absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping
+            absolute inline-flex h-full w-full animate-ping rounded-full opacity-75
             ${DOT_COLORS[level]}
           `}
         />

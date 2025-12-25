@@ -7,8 +7,8 @@
 
 import { v4 as uuidv4 } from 'uuid';
 
-import { logger } from '../utils/logger.js';
 import { DatabaseService } from '../db/database.js';
+import { logger } from '../utils/logger.js';
 
 const log = logger.child({ service: 'JobLock' });
 
@@ -104,10 +104,7 @@ export class JobLockService {
           };
         }
 
-        if (
-          existing.status === JobStatus.COMPLETED ||
-          existing.status === JobStatus.SKIPPED
-        ) {
+        if (existing.status === JobStatus.COMPLETED || existing.status === JobStatus.SKIPPED) {
           log.debug({ jobKey, existingJobId: existing.id }, 'Job already completed');
           return {
             acquired: false,
@@ -238,7 +235,7 @@ export class JobLockService {
    */
   async getJobsByIntentId(intentId: string): Promise<Job[]> {
     const jobs = await this.db.getJobsByIntent(intentId);
-    return jobs.map((j) => this.rowToJob(j));
+    return jobs.map(j => this.rowToJob(j));
   }
 
   /**
@@ -247,8 +244,8 @@ export class JobLockService {
   async getPendingJobs(intentId: string): Promise<Job[]> {
     const jobs = await this.db.getJobsByIntent(intentId);
     return jobs
-      .filter((j) => j.status === JobStatus.PENDING || j.status === JobStatus.RUNNING)
-      .map((j) => this.rowToJob(j));
+      .filter(j => j.status === JobStatus.PENDING || j.status === JobStatus.RUNNING)
+      .map(j => this.rowToJob(j));
   }
 
   /**
@@ -256,7 +253,7 @@ export class JobLockService {
    */
   async getRecentJobs(intentId: string, limit: number = 10): Promise<Job[]> {
     const jobs = await this.db.getJobsByIntent(intentId);
-    return jobs.slice(0, limit).map((j) => this.rowToJob(j));
+    return jobs.slice(0, limit).map(j => this.rowToJob(j));
   }
 
   /**

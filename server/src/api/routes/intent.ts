@@ -6,7 +6,11 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 
 import { DatabaseService } from '../../db/database.js';
-import { IntentScheduler, IntentType, CreateIntentRequest } from '../../services/intentScheduler.js';
+import {
+  IntentScheduler,
+  IntentType,
+  CreateIntentRequest,
+} from '../../services/intentScheduler.js';
 import { logger } from '../../utils/logger.js';
 
 const log = logger.child({ route: 'intent' });
@@ -223,7 +227,7 @@ export function createIntentRoutes(db: DatabaseService): Router {
 
       res.json({
         success: true,
-        data: intents.map((intent) => ({
+        data: intents.map(intent => ({
           id: intent.id,
           type: intent.intentType,
           status: intent.status,

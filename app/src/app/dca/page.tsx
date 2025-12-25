@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Header } from '@/components/Header';
+import { useState } from 'react';
+
 import { Footer } from '@/components/Footer';
+import { Header } from '@/components/Header';
 import { apiClient } from '@/lib/api';
 
 // Common tokens

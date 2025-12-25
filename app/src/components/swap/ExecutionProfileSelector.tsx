@@ -55,7 +55,7 @@ export function ExecutionProfileSelector({
         Execution Profile
       </label>
       <div className="flex gap-2">
-        {profiles.map((profile) => (
+        {profiles.map(profile => (
           <button
             key={profile.id}
             onClick={() => !disabled && onChange(profile.id)}

@@ -422,7 +422,7 @@ Connect to \`/ws\` for real-time updates:
       get: {
         tags: ['Swap'],
         summary: 'Get swap history',
-        description: 'Get the authenticated user\'s swap history',
+        description: "Get the authenticated user's swap history",
         operationId: 'getSwapHistory',
         security: [{ bearerAuth: [] }],
         parameters: [
@@ -1132,7 +1132,7 @@ Connect to \`/ws\` for real-time updates:
       get: {
         tags: ['Notifications'],
         summary: 'Get notification preferences',
-        description: 'Get the user\'s notification preferences',
+        description: "Get the user's notification preferences",
         operationId: 'getNotificationPreferences',
         security: [{ bearerAuth: [] }],
         responses: {
@@ -1151,7 +1151,7 @@ Connect to \`/ws\` for real-time updates:
       put: {
         tags: ['Notifications'],
         summary: 'Update notification preferences',
-        description: 'Update the user\'s notification preferences',
+        description: "Update the user's notification preferences",
         operationId: 'updateNotificationPreferences',
         security: [{ bearerAuth: [] }],
         requestBody: {
@@ -1182,7 +1182,7 @@ Connect to \`/ws\` for real-time updates:
       get: {
         tags: ['User'],
         summary: 'Get user profile',
-        description: 'Get the authenticated user\'s profile',
+        description: "Get the authenticated user's profile",
         operationId: 'getUserProfile',
         security: [{ bearerAuth: [] }],
         responses: {
@@ -1211,7 +1211,7 @@ Connect to \`/ws\` for real-time updates:
       put: {
         tags: ['User'],
         summary: 'Update user profile',
-        description: 'Update the authenticated user\'s profile',
+        description: "Update the authenticated user's profile",
         operationId: 'updateUserProfile',
         security: [{ bearerAuth: [] }],
         requestBody: {
@@ -1837,7 +1837,10 @@ Connect to \`/ws\` for real-time updates:
           id: { type: 'string', format: 'uuid' },
           userId: { type: 'string' },
           type: { type: 'string', enum: ['dca', 'stop_loss', 'limit_order'] },
-          status: { type: 'string', enum: ['active', 'paused', 'completed', 'cancelled', 'failed'] },
+          status: {
+            type: 'string',
+            enum: ['active', 'paused', 'completed', 'cancelled', 'failed'],
+          },
           inputMint: { type: 'string' },
           outputMint: { type: 'string' },
           totalAmount: { type: 'string' },
@@ -1869,7 +1872,14 @@ Connect to \`/ws\` for real-time updates:
       },
       CreateStopLossRequest: {
         type: 'object',
-        required: ['inputMint', 'outputMint', 'amount', 'priceFeedId', 'priceThreshold', 'priceDirection'],
+        required: [
+          'inputMint',
+          'outputMint',
+          'amount',
+          'priceFeedId',
+          'priceThreshold',
+          'priceDirection',
+        ],
         properties: {
           inputMint: { type: 'string' },
           outputMint: { type: 'string' },

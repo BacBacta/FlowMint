@@ -30,7 +30,7 @@ export function ProtectedToggle({
         className={`
           relative inline-flex h-6 w-11 items-center rounded-full
           transition-colors duration-200
-          ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+          ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}
           ${enabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}
         `}
       >
@@ -50,9 +50,7 @@ export function ProtectedToggle({
         )}
         <span
           className={`text-sm font-medium ${
-            enabled
-              ? 'text-blue-600 dark:text-blue-400'
-              : 'text-gray-600 dark:text-gray-400'
+            enabled ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400'
           }`}
         >
           Protected Mode
@@ -85,9 +83,10 @@ export function ProtectedModeCard({
     <div
       className={`
         rounded-lg border p-4
-        ${enabled
-          ? 'border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20'
-          : 'border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/50'
+        ${
+          enabled
+            ? 'border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20'
+            : 'border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/50'
         }
         ${className}
       `}
@@ -100,9 +99,7 @@ export function ProtectedModeCard({
             <ShieldOff size={24} className="text-gray-400" />
           )}
           <div>
-            <h3 className="font-medium text-gray-800 dark:text-gray-200">
-              Protected Mode
-            </h3>
+            <h3 className="font-medium text-gray-800 dark:text-gray-200">Protected Mode</h3>
             <p className="text-sm text-gray-600 dark:text-gray-400">
               {enabled ? 'Enhanced safety checks enabled' : 'Standard execution'}
             </p>
@@ -112,11 +109,12 @@ export function ProtectedModeCard({
           onClick={() => !disabled && onChange(!enabled)}
           disabled={disabled}
           className={`
-            px-4 py-2 rounded-lg font-medium transition-colors
-            ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
-            ${enabled
-              ? 'bg-blue-600 text-white hover:bg-blue-700'
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300'
+            rounded-lg px-4 py-2 font-medium transition-colors
+            ${disabled ? 'cursor-not-allowed opacity-50' : ''}
+            ${
+              enabled
+                ? 'bg-blue-600 text-white hover:bg-blue-700'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300'
             }
           `}
         >
@@ -127,14 +125,14 @@ export function ProtectedModeCard({
       {/* Show details link */}
       <button
         onClick={() => setShowDetails(!showDetails)}
-        className="mt-3 text-sm text-blue-600 dark:text-blue-400 hover:underline"
+        className="mt-3 text-sm text-blue-600 hover:underline dark:text-blue-400"
       >
         {showDetails ? 'Hide details' : 'What does this do?'}
       </button>
 
       {showDetails && (
-        <div className="mt-3 p-3 rounded bg-white/50 dark:bg-gray-800/50">
-          <h4 className="font-medium text-gray-800 dark:text-gray-200 mb-2">
+        <div className="mt-3 rounded bg-white/50 p-3 dark:bg-gray-800/50">
+          <h4 className="mb-2 font-medium text-gray-800 dark:text-gray-200">
             Protected Mode Features:
           </h4>
           <ul className="space-y-1.5 text-sm text-gray-600 dark:text-gray-400">

@@ -9,7 +9,13 @@
 import { CheckCircle, Circle, Loader2, XCircle } from 'lucide-react';
 
 // Legacy type for backwards compatibility
-export type ExecutionStepType = 'quoting' | 'building' | 'sending' | 'confirming' | 'confirmed' | 'failed';
+export type ExecutionStepType =
+  | 'quoting'
+  | 'building'
+  | 'sending'
+  | 'confirming'
+  | 'confirmed'
+  | 'failed';
 
 // New interface for flexible step definitions
 export interface ExecutionStep {
@@ -47,11 +53,7 @@ const LEGACY_STEPS: { key: ExecutionStepType; label: string }[] = [
 ];
 
 export function ExecutionStatus(props: ExecutionStatusProps) {
-  const {
-    error,
-    signature,
-    className = '',
-  } = props;
+  const { error, signature, className = '' } = props;
 
   // Handle new steps array format
   if ('steps' in props && props.steps) {
@@ -62,20 +64,26 @@ export function ExecutionStatus(props: ExecutionStatusProps) {
 
     if (variant === 'minimal') {
       return (
-        <div className={`flex items-center gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 ${className}`}>
+        <div
+          className={`flex items-center gap-3 rounded-lg bg-gray-50 p-3 dark:bg-gray-800/50 ${className}`}
+        >
           {isComplete ? (
             <>
               <CheckCircle size={20} className="text-green-500" />
-              <span className="text-sm text-green-600 dark:text-green-400">Transaction confirmed!</span>
+              <span className="text-sm text-green-600 dark:text-green-400">
+                Transaction confirmed!
+              </span>
             </>
           ) : hasFailed ? (
             <>
               <XCircle size={20} className="text-red-500" />
-              <span className="text-sm text-red-600 dark:text-red-400">{error || 'Transaction failed'}</span>
+              <span className="text-sm text-red-600 dark:text-red-400">
+                {error || 'Transaction failed'}
+              </span>
             </>
           ) : (
             <>
-              <Loader2 size={20} className="text-blue-500 animate-spin" />
+              <Loader2 size={20} className="animate-spin text-blue-500" />
               <span className="text-sm text-blue-600 dark:text-blue-400">
                 {currentStep?.label || 'Processing...'}
               </span>
@@ -86,19 +94,17 @@ export function ExecutionStatus(props: ExecutionStatusProps) {
     }
 
     return (
-      <div className={`p-4 rounded-lg bg-gray-50 dark:bg-gray-800/50 ${className}`}>
+      <div className={`rounded-lg bg-gray-50 p-4 dark:bg-gray-800/50 ${className}`}>
         <div className="space-y-3">
-          {steps.map((step) => (
+          {steps.map(step => (
             <div
               key={step.id}
-              className={`flex items-center gap-3 ${
-                step.status === 'pending' ? 'opacity-40' : ''
-              }`}
+              className={`flex items-center gap-3 ${step.status === 'pending' ? 'opacity-40' : ''}`}
             >
               {step.status === 'completed' ? (
                 <CheckCircle size={20} className="text-green-500" />
               ) : step.status === 'current' ? (
-                <Loader2 size={20} className="text-blue-500 animate-spin" />
+                <Loader2 size={20} className="animate-spin text-blue-500" />
               ) : step.status === 'failed' ? (
                 <XCircle size={20} className="text-red-500" />
               ) : (
@@ -109,23 +115,23 @@ export function ExecutionStatus(props: ExecutionStatusProps) {
                   step.status === 'completed'
                     ? 'text-green-600 dark:text-green-400'
                     : step.status === 'current'
-                    ? 'text-blue-600 dark:text-blue-400 font-medium'
-                    : step.status === 'failed'
-                    ? 'text-red-600 dark:text-red-400'
-                    : 'text-gray-500 dark:text-gray-500'
+                      ? 'font-medium text-blue-600 dark:text-blue-400'
+                      : step.status === 'failed'
+                        ? 'text-red-600 dark:text-red-400'
+                        : 'text-gray-500 dark:text-gray-500'
                 }`}
               >
                 {step.label}
               </span>
             </div>
           ))}
-          
+
           {signature && isComplete && (
             <a
               href={`https://solscan.io/tx/${signature}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-2 text-sm text-green-600 dark:text-green-400 hover:underline block"
+              className="mt-2 block text-sm text-green-600 hover:underline dark:text-green-400"
             >
               View on Solscan →
             </a>
@@ -137,12 +143,12 @@ export function ExecutionStatus(props: ExecutionStatusProps) {
 
   // Legacy format with currentStep
   const { currentStep, attempts } = props as ExecutionStatusPropsLegacy;
-  const currentIndex = LEGACY_STEPS.findIndex((s) => s.key === currentStep);
+  const currentIndex = LEGACY_STEPS.findIndex(s => s.key === currentStep);
   const isComplete = currentStep === 'confirmed';
   const isFailed = currentStep === 'failed';
 
   return (
-    <div className={`p-4 rounded-lg bg-gray-50 dark:bg-gray-800/50 ${className}`}>
+    <div className={`rounded-lg bg-gray-50 p-4 dark:bg-gray-800/50 ${className}`}>
       <div className="space-y-3">
         {LEGACY_STEPS.map((step, index) => {
           const isPast = index < currentIndex || isComplete;
@@ -160,7 +166,7 @@ export function ExecutionStatus(props: ExecutionStatusProps) {
               {isPast ? (
                 <CheckCircle size={20} className="text-green-500" />
               ) : isCurrent ? (
-                <Loader2 size={20} className="text-blue-500 animate-spin" />
+                <Loader2 size={20} className="animate-spin text-blue-500" />
               ) : isFailed && index === currentIndex ? (
                 <XCircle size={20} className="text-red-500" />
               ) : (
@@ -173,8 +179,8 @@ export function ExecutionStatus(props: ExecutionStatusProps) {
                   isPast
                     ? 'text-green-600 dark:text-green-400'
                     : isCurrent
-                    ? 'text-blue-600 dark:text-blue-400 font-medium'
-                    : 'text-gray-500 dark:text-gray-500'
+                      ? 'font-medium text-blue-600 dark:text-blue-400'
+                      : 'text-gray-500 dark:text-gray-500'
                 }`}
               >
                 {step.label}
@@ -192,7 +198,7 @@ export function ExecutionStatus(props: ExecutionStatusProps) {
 
         {/* Success state */}
         {isComplete && (
-          <div className="mt-4 p-3 rounded-lg bg-green-100 dark:bg-green-900/30 border border-green-200 dark:border-green-800">
+          <div className="mt-4 rounded-lg border border-green-200 bg-green-100 p-3 dark:border-green-800 dark:bg-green-900/30">
             <div className="flex items-center gap-2 text-green-700 dark:text-green-400">
               <CheckCircle size={20} />
               <span className="font-medium">Transaction confirmed!</span>
@@ -202,7 +208,7 @@ export function ExecutionStatus(props: ExecutionStatusProps) {
                 href={`https://solscan.io/tx/${signature}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-2 text-sm text-green-600 dark:text-green-400 hover:underline block"
+                className="mt-2 block text-sm text-green-600 hover:underline dark:text-green-400"
               >
                 View on Solscan →
               </a>
@@ -212,14 +218,12 @@ export function ExecutionStatus(props: ExecutionStatusProps) {
 
         {/* Failed state */}
         {isFailed && error && (
-          <div className="mt-4 p-3 rounded-lg bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-800">
+          <div className="mt-4 rounded-lg border border-red-200 bg-red-100 p-3 dark:border-red-800 dark:bg-red-900/30">
             <div className="flex items-center gap-2 text-red-700 dark:text-red-400">
               <XCircle size={20} />
               <span className="font-medium">Transaction failed</span>
             </div>
-            <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-              {error}
-            </p>
+            <p className="mt-1 text-sm text-red-600 dark:text-red-400">{error}</p>
           </div>
         )}
       </div>
@@ -240,12 +244,12 @@ export function ExecutionIndicator({ status, message }: ExecutionIndicatorProps)
 
   return (
     <div
-      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
+      className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
         status === 'loading'
           ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
           : status === 'success'
-          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-          : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+            : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
       }`}
     >
       {status === 'loading' && <Loader2 size={16} className="animate-spin" />}

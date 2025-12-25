@@ -18,6 +18,7 @@ import {
 
 import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
+
 import { rpcManager } from './rpcManager.js';
 
 const log = logger.child({ service: 'TxConfirm' });
@@ -102,10 +103,7 @@ export class TxConfirmService {
     let lastError: string | undefined;
     let blockhashExpired = false;
 
-    log.debug(
-      { signature, commitment, timeoutMs },
-      'Starting transaction confirmation'
-    );
+    log.debug({ signature, commitment, timeoutMs }, 'Starting transaction confirmation');
 
     while (Date.now() - startTime < timeoutMs) {
       attempts++;
@@ -151,10 +149,7 @@ export class TxConfirmService {
 
         // Check for errors
         if (status.err) {
-          const errorStr =
-            typeof status.err === 'string'
-              ? status.err
-              : JSON.stringify(status.err);
+          const errorStr = typeof status.err === 'string' ? status.err : JSON.stringify(status.err);
           log.error({ signature, error: status.err }, 'Transaction failed');
           return this.buildResult(
             signature,
@@ -328,10 +323,7 @@ export class TxConfirmService {
   /**
    * Check if a blockhash is still valid
    */
-  async isBlockhashValid(
-    blockhash: string,
-    lastValidBlockHeight: number
-  ): Promise<boolean> {
+  async isBlockhashValid(blockhash: string, lastValidBlockHeight: number): Promise<boolean> {
     try {
       const currentHeight = await this.getCurrentBlockHeight();
       return currentHeight <= lastValidBlockHeight;

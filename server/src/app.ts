@@ -4,30 +4,29 @@
  * Creates and configures the Express application with all routes and middleware.
  */
 
-import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
-import helmet from 'helmet';
+import express, { Express, Request, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
-
-import { DatabaseService } from './db/database.js';
-import { logger } from './utils/logger.js';
-import { config } from './config/index.js';
+import helmet from 'helmet';
 
 // Route imports
-import { createSwapRoutes } from './api/routes/swap.js';
-import { createPaymentRoutes } from './api/routes/payment.js';
-import { createIntentRoutes } from './api/routes/intent.js';
-import { createHealthRoutes } from './api/routes/health.js';
-import { createNotificationRoutes } from './api/routes/notifications.js';
+import { createAdvancedOrdersRoutes } from './api/routes/advancedOrders.js';
 import { createAnalyticsRoutes } from './api/routes/analytics.js';
 import { createAuthRoutes } from './api/routes/auth.js';
 import { createDelegationRoutes } from './api/routes/delegation.js';
+import { createHealthRoutes } from './api/routes/health.js';
+import { createIntentRoutes } from './api/routes/intent.js';
 import { createJupiterOrdersRoutes } from './api/routes/jupiterOrders.js';
-import { createMEVRoutes } from './api/routes/mev.js';
-import { createAdvancedOrdersRoutes } from './api/routes/advancedOrders.js';
-import { createPortfolioPayRouter, initPortfolioPayServices } from './routes/portfoliopay.js';
 import metricsRouter from './api/routes/metrics.js';
+import { createMEVRoutes } from './api/routes/mev.js';
+import { createNotificationRoutes } from './api/routes/notifications.js';
+import { createPaymentRoutes } from './api/routes/payment.js';
+import { createSwapRoutes } from './api/routes/swap.js';
 import swaggerRouter from './api/swagger.js';
+import { config } from './config/index.js';
+import { DatabaseService } from './db/database.js';
+import { createPortfolioPayRouter, initPortfolioPayServices } from './routes/portfoliopay.js';
+import { logger } from './utils/logger.js';
 
 /**
  * Creates and configures the Express application

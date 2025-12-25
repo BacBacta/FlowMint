@@ -5,6 +5,9 @@
  * Builds and injects FlowMint instructions into Jupiter transactions.
  */
 
+import { Buffer } from 'buffer';
+
+import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import {
   Connection,
   PublicKey,
@@ -15,11 +18,10 @@ import {
   SystemProgram,
   SYSVAR_CLOCK_PUBKEY,
 } from '@solana/web3.js';
-import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
-import { Buffer } from 'buffer';
 
 import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
+
 import { QuoteResponse, RoutePlanStep } from './jupiterService.js';
 
 const log = logger.child({ service: 'FlowMintOnChain' });
@@ -28,9 +30,7 @@ const log = logger.child({ service: 'FlowMintOnChain' });
  * FlowMint Program ID
  * Deployed on devnet: CmPS9FdZQ4ex9A45yjvJGAjPBdBj6oYY9juQMfdzBJdi
  */
-export const FLOWMINT_PROGRAM_ID = new PublicKey(
-  'CmPS9FdZQ4ex9A45yjvJGAjPBdBj6oYY9juQMfdzBJdi'
-);
+export const FLOWMINT_PROGRAM_ID = new PublicKey('CmPS9FdZQ4ex9A45yjvJGAjPBdBj6oYY9juQMfdzBJdi');
 
 /**
  * Instruction discriminators for FlowMint program
@@ -85,10 +85,7 @@ export class FlowMintOnChainService {
    * Derive the protocol config PDA
    */
   getConfigPDA(): [PublicKey, number] {
-    return PublicKey.findProgramAddressSync(
-      [Buffer.from('config')],
-      FLOWMINT_PROGRAM_ID
-    );
+    return PublicKey.findProgramAddressSync([Buffer.from('config')], FLOWMINT_PROGRAM_ID);
   }
 
   /**
@@ -118,7 +115,11 @@ export class FlowMintOnChainService {
   /**
    * Derive payment record PDA
    */
-  getPaymentRecordPDA(payer: PublicKey, merchant: PublicKey, timestamp: number): [PublicKey, number] {
+  getPaymentRecordPDA(
+    payer: PublicKey,
+    merchant: PublicKey,
+    timestamp: number
+  ): [PublicKey, number] {
     return PublicKey.findProgramAddressSync(
       [
         Buffer.from('payment'),
@@ -150,7 +151,7 @@ export class FlowMintOnChainService {
       inAmount: BigInt(quote.inAmount),
       outAmount: BigInt(quote.outAmount),
       slippageBps: quote.slippageBps,
-      routeSteps: quote.routePlan.map((step) => ({
+      routeSteps: quote.routePlan.map(step => ({
         programId: new PublicKey(step.swapInfo.ammKey),
         inputMint: new PublicKey(step.swapInfo.inputMint),
         outputMint: new PublicKey(step.swapInfo.outputMint),
@@ -343,7 +344,7 @@ export class FlowMintOnChainService {
 
     // Get the address lookup tables
     const lookupTables = await Promise.all(
-      message.addressTableLookups.map(async (lookup) => {
+      message.addressTableLookups.map(async lookup => {
         const account = await this.connection.getAddressLookupTable(lookup.accountKey);
         return account.value;
       })
@@ -351,14 +352,11 @@ export class FlowMintOnChainService {
 
     // Decompile the message to get instructions
     const decompiledMessage = TransactionMessage.decompile(message, {
-      addressLookupTableAccounts: lookupTables.filter((t) => t !== null) as any[],
+      addressLookupTableAccounts: lookupTables.filter(t => t !== null) as any[],
     });
 
     // Add FlowMint instruction before Jupiter instructions
-    const newInstructions = [
-      flowMintInstruction,
-      ...decompiledMessage.instructions,
-    ];
+    const newInstructions = [flowMintInstruction, ...decompiledMessage.instructions];
 
     // Build new transaction message
     const { blockhash } = await this.connection.getLatestBlockhash();
@@ -366,7 +364,7 @@ export class FlowMintOnChainService {
       payerKey: userPublicKey,
       recentBlockhash: blockhash,
       instructions: newInstructions,
-    }).compileToV0Message(lookupTables.filter((t) => t !== null) as any[]);
+    }).compileToV0Message(lookupTables.filter(t => t !== null) as any[]);
 
     return new VersionedTransaction(newMessage);
   }
@@ -374,7 +372,10 @@ export class FlowMintOnChainService {
   /**
    * Fetch on-chain receipt after transaction confirmation
    */
-  async fetchReceipt(user: PublicKey, timestamp: number): Promise<{
+  async fetchReceipt(
+    user: PublicKey,
+    timestamp: number
+  ): Promise<{
     user: PublicKey;
     inputMint: PublicKey;
     outputMint: PublicKey;

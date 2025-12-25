@@ -1,8 +1,9 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import dynamic from 'next/dynamic';
+
 import { NotificationBell } from './notifications';
 
 // Dynamically import wallet button to avoid SSR hydration mismatch

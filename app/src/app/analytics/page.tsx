@@ -6,9 +6,9 @@
 
 'use client';
 
-import { Header } from '@/components/Header';
-import { Footer } from '@/components/Footer';
 import { AnalyticsDashboard } from '@/components/analytics';
+import { Footer } from '@/components/Footer';
+import { Header } from '@/components/Header';
 
 export default function AnalyticsPage() {
   return (

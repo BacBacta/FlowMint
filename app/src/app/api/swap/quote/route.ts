@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     // Fetch from Jupiter
     const response = await fetch(jupiterUrl.toString(), {
       headers: {
-        'Accept': 'application/json',
+        Accept: 'application/json',
       },
     });
 

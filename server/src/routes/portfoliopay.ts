@@ -4,18 +4,19 @@
  * Invoice management, payment quotes, and attestation verification.
  */
 
+import * as crypto from 'crypto';
+
+import { Keypair, Connection } from '@solana/web3.js';
 import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import * as crypto from 'crypto';
-import { Keypair, Connection } from '@solana/web3.js';
 
-import { logger } from '../utils/logger.js';
-import { DatabaseService } from '../db/database.js';
-import { InvoiceService, CreateInvoiceParams } from '../services/invoiceService.js';
-import { AttestationService } from '../services/attestationService.js';
-import { RelayerService } from '../services/relayerService.js';
-import { PaymentService, ExtendedPaymentQuote } from '../services/paymentService.js';
 import { config } from '../config/index.js';
+import { DatabaseService } from '../db/database.js';
+import { AttestationService } from '../services/attestationService.js';
+import { InvoiceService, CreateInvoiceParams } from '../services/invoiceService.js';
+import { PaymentService, ExtendedPaymentQuote } from '../services/paymentService.js';
+import { RelayerService } from '../services/relayerService.js';
+import { logger } from '../utils/logger.js';
 
 const log = logger.child({ module: 'portfoliopay-routes' });
 
@@ -32,7 +33,7 @@ let signerKeypair: Keypair;
  */
 export async function initPortfolioPayServices(database: DatabaseService): Promise<void> {
   db = database;
-  
+
   // Create signer keypair for attestations
   // In production, load from secure storage
   const signerSecret = process.env.ATTESTATION_SIGNER_KEY;
@@ -52,9 +53,9 @@ export async function initPortfolioPayServices(database: DatabaseService): Promi
   // Initialize services
   invoiceService = new InvoiceService(db);
   attestationService = new AttestationService(db, process.env.BASE_URL);
-  
+
   const connection = new Connection(config.solana.rpcUrl, config.solana.commitment);
-  
+
   // Relayer keypair (optional)
   let relayerKeypair: Keypair | undefined;
   const relayerSecret = process.env.RELAYER_PRIVATE_KEY;
@@ -66,9 +67,9 @@ export async function initPortfolioPayServices(database: DatabaseService): Promi
       log.warn('Invalid RELAYER_PRIVATE_KEY');
     }
   }
-  
+
   relayerService = new RelayerService(connection, db, relayerKeypair);
-  
+
   paymentService = new PaymentService(db);
   paymentService.setServices({
     invoiceService,
@@ -77,10 +78,13 @@ export async function initPortfolioPayServices(database: DatabaseService): Promi
     signerKeypair,
   });
 
-  log.info({
-    attestationSigner: signerKeypair.publicKey.toBase58(),
-    relayerConfigured: !!relayerKeypair,
-  }, 'PortfolioPay services initialized');
+  log.info(
+    {
+      attestationSigner: signerKeypair.publicKey.toBase58(),
+      relayerConfigured: !!relayerKeypair,
+    },
+    'PortfolioPay services initialized'
+  );
 }
 
 /**
@@ -265,15 +269,8 @@ export function createPortfolioPayRouter(): Router {
    */
   router.post('/invoices', async (req: Request, res: Response) => {
     try {
-      const {
-        merchantId,
-        settleMint,
-        amountOut,
-        orderId,
-        policyId,
-        expiresInMs,
-        idempotencyKey,
-      } = req.body;
+      const { merchantId, settleMint, amountOut, orderId, policyId, expiresInMs, idempotencyKey } =
+        req.body;
 
       if (!merchantId || !settleMint || !amountOut) {
         return res.status(400).json({
@@ -383,12 +380,15 @@ export function createPortfolioPayRouter(): Router {
       // Save quote for tracking
       await paymentService.saveQuote(quote, invoiceId, payerPublicKey);
 
-      log.info({
-        invoiceId,
-        quoteId: quote.quoteId,
-        mode: quote.mode,
-        gasless: quote.gaslessEligible,
-      }, 'Payment quote generated');
+      log.info(
+        {
+          invoiceId,
+          quoteId: quote.quoteId,
+          mode: quote.mode,
+          gasless: quote.gaslessEligible,
+        },
+        'Payment quote generated'
+      );
 
       res.json({
         quoteId: quote.quoteId,
@@ -421,13 +421,7 @@ export function createPortfolioPayRouter(): Router {
    */
   router.post('/payments/quote-multi', async (req: Request, res: Response) => {
     try {
-      const {
-        invoiceId,
-        payerPublicKey,
-        payMints,
-        maxLegs = 2,
-        strategy = 'min-risk',
-      } = req.body;
+      const { invoiceId, payerPublicKey, payMints, maxLegs = 2, strategy = 'min-risk' } = req.body;
 
       // Validate inputs
       if (!invoiceId || !payerPublicKey || !Array.isArray(payMints) || payMints.length === 0) {
@@ -512,13 +506,16 @@ export function createPortfolioPayRouter(): Router {
         planResult.plan
       );
 
-      log.info({
-        invoiceId,
-        reservationId: reservation.id,
-        strategy,
-        legsCount: legs.length,
-        totalExpectedUsdc: planResult.plan.totalExpectedUsdcOut,
-      }, 'Multi-token quote generated');
+      log.info(
+        {
+          invoiceId,
+          reservationId: reservation.id,
+          strategy,
+          legsCount: legs.length,
+          totalExpectedUsdc: planResult.plan.totalExpectedUsdcOut,
+        },
+        'Multi-token quote generated'
+      );
 
       res.json({
         reservationId: reservation.id,
@@ -582,7 +579,7 @@ export function createPortfolioPayRouter(): Router {
 
       // Get legs
       const legs = await db.getLegsByReservation(reservationId);
-      const leg = legs.find((l) => l.legIndex === legIndex);
+      const leg = legs.find(l => l.legIndex === legIndex);
 
       if (!leg) {
         return res.status(404).json({
@@ -598,7 +595,7 @@ export function createPortfolioPayRouter(): Router {
       }
 
       // Validate leg order (must execute in sequence)
-      const previousLeg = legs.find((l) => l.legIndex === legIndex - 1);
+      const previousLeg = legs.find(l => l.legIndex === legIndex - 1);
       if (previousLeg && previousLeg.status !== 'completed') {
         return res.status(400).json({
           error: `Previous leg ${legIndex - 1} must be completed first`,
@@ -618,11 +615,14 @@ export function createPortfolioPayRouter(): Router {
       });
 
       if (result.success) {
-        log.info({
-          reservationId,
-          legIndex,
-          txSignature: result.txSignature,
-        }, 'Leg executed successfully');
+        log.info(
+          {
+            reservationId,
+            legIndex,
+            txSignature: result.txSignature,
+          },
+          'Leg executed successfully'
+        );
 
         // Check if all legs complete
         const progress = await executor.getProgress(reservationId);
@@ -635,12 +635,15 @@ export function createPortfolioPayRouter(): Router {
           progress,
         });
       } else {
-        log.warn({
-          reservationId,
-          legIndex,
-          error: result.error,
-          shouldRetry: result.shouldRetry,
-        }, 'Leg execution failed');
+        log.warn(
+          {
+            reservationId,
+            legIndex,
+            error: result.error,
+            shouldRetry: result.shouldRetry,
+          },
+          'Leg execution failed'
+        );
 
         res.status(400).json({
           success: false,
@@ -660,54 +663,58 @@ export function createPortfolioPayRouter(): Router {
    * GET /api/v1/payments/reservation/:reservationId/progress
    * Get progress of a split payment reservation (V1.5)
    */
-  router.get('/payments/reservation/:reservationId/progress', async (req: Request, res: Response) => {
-    try {
-      const { reservationId } = req.params;
+  router.get(
+    '/payments/reservation/:reservationId/progress',
+    async (req: Request, res: Response) => {
+      try {
+        const { reservationId } = req.params;
 
-      const reservation = await db.getInvoiceReservation(reservationId);
-      if (!reservation) {
-        return res.status(404).json({ error: 'Reservation not found' });
+        const reservation = await db.getInvoiceReservation(reservationId);
+        if (!reservation) {
+          return res.status(404).json({ error: 'Reservation not found' });
+        }
+
+        const legs = await db.getLegsByReservation(reservationId);
+        const plan = JSON.parse(reservation.planJson);
+
+        const percentComplete =
+          reservation.totalLegs > 0
+            ? Math.round((reservation.completedLegs / reservation.totalLegs) * 100)
+            : 0;
+
+        res.json({
+          reservationId,
+          invoiceId: reservation.invoiceId,
+          payer: reservation.payer,
+          strategy: reservation.strategy,
+          status: reservation.status,
+          totalLegs: reservation.totalLegs,
+          completedLegs: reservation.completedLegs,
+          usdcCollected: reservation.usdcCollected,
+          targetAmount: plan.settlementAmount,
+          percentComplete,
+          expiresAt: reservation.expiresAt,
+          isExpired: Date.now() > reservation.expiresAt,
+          legs: legs.map(leg => ({
+            legIndex: leg.legIndex,
+            payMint: leg.payMint,
+            amountIn: leg.amountIn,
+            expectedUsdcOut: leg.expectedUsdcOut,
+            actualUsdcOut: leg.actualUsdcOut,
+            status: leg.status,
+            txSignature: leg.txSignature,
+            errorMessage: leg.errorMessage,
+            retryCount: leg.retryCount,
+            maxRetries: leg.maxRetries,
+          })),
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        log.error({ error }, 'Failed to get reservation progress');
+        res.status(500).json({ error: message });
       }
-
-      const legs = await db.getLegsByReservation(reservationId);
-      const plan = JSON.parse(reservation.planJson);
-
-      const percentComplete = reservation.totalLegs > 0
-        ? Math.round((reservation.completedLegs / reservation.totalLegs) * 100)
-        : 0;
-
-      res.json({
-        reservationId,
-        invoiceId: reservation.invoiceId,
-        payer: reservation.payer,
-        strategy: reservation.strategy,
-        status: reservation.status,
-        totalLegs: reservation.totalLegs,
-        completedLegs: reservation.completedLegs,
-        usdcCollected: reservation.usdcCollected,
-        targetAmount: plan.settlementAmount,
-        percentComplete,
-        expiresAt: reservation.expiresAt,
-        isExpired: Date.now() > reservation.expiresAt,
-        legs: legs.map((leg) => ({
-          legIndex: leg.legIndex,
-          payMint: leg.payMint,
-          amountIn: leg.amountIn,
-          expectedUsdcOut: leg.expectedUsdcOut,
-          actualUsdcOut: leg.actualUsdcOut,
-          status: leg.status,
-          txSignature: leg.txSignature,
-          errorMessage: leg.errorMessage,
-          retryCount: leg.retryCount,
-          maxRetries: leg.maxRetries,
-        })),
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      log.error({ error }, 'Failed to get reservation progress');
-      res.status(500).json({ error: message });
     }
-  });
+  );
 
   /**
    * POST /api/v1/payments/build
@@ -902,11 +909,14 @@ export function createPortfolioPayRouter(): Router {
         createdAt: Date.now(),
       });
 
-      log.info({
-        invoiceId,
-        submissionId: result.submissionId,
-        signature: result.signature,
-      }, 'Gasless transaction submitted');
+      log.info(
+        {
+          invoiceId,
+          submissionId: result.submissionId,
+          signature: result.signature,
+        },
+        'Gasless transaction submitted'
+      );
 
       res.json({
         success: true,

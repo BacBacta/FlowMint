@@ -7,9 +7,9 @@
 
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { Bell, Check, CheckCheck, X } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
 
 interface Notification {
   id: string;

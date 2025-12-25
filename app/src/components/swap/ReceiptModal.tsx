@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+
 import { ExecutionTimeline } from './ExecutionTimeline';
 
 interface ReceiptData {
@@ -82,22 +83,27 @@ export function ReceiptModal({ isOpen, onClose, receipt }: ReceiptModalProps) {
       <div className="mx-4 w-full max-w-md rounded-xl bg-white p-6 shadow-2xl dark:bg-gray-800">
         {/* Header */}
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-            Transaction Receipt
-          </h2>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white">Transaction Receipt</h2>
           <button
             onClick={onClose}
             className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
 
         {/* Status Badge */}
         <div className="mb-4 flex items-center justify-center">
-          <span className={`rounded-full px-4 py-1.5 text-sm font-medium ${statusColors[receipt.status]}`}>
+          <span
+            className={`rounded-full px-4 py-1.5 text-sm font-medium ${statusColors[receipt.status]}`}
+          >
             {receipt.status === 'pending' && '⏳ '}
             {receipt.status === 'success' && '✅ '}
             {receipt.status === 'failed' && '❌ '}
@@ -116,8 +122,18 @@ export function ReceiptModal({ isOpen, onClose, receipt }: ReceiptModalProps) {
               </span>
             </div>
             <div className="flex items-center justify-center py-1">
-              <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+              <svg
+                className="h-5 w-5 text-gray-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 14l-7 7m0 0l-7-7m7 7V3"
+                />
               </svg>
             </div>
             <div className="flex items-center justify-between">

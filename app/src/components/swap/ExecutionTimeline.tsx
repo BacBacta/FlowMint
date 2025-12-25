@@ -113,15 +113,18 @@ export function ExecutionTimeline({ receiptId, isOpen, onClose }: ExecutionTimel
       <div className="mx-4 max-h-[80vh] w-full max-w-lg overflow-hidden rounded-xl bg-white shadow-2xl dark:bg-gray-800">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-200 p-4 dark:border-gray-700">
-          <h2 className="text-lg font-bold text-gray-900 dark:text-white">
-            Execution Timeline
-          </h2>
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white">Execution Timeline</h2>
           <button
             onClick={onClose}
             className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -130,11 +133,7 @@ export function ExecutionTimeline({ receiptId, isOpen, onClose }: ExecutionTimel
         <div className="max-h-[60vh] overflow-y-auto p-4">
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
-              <svg
-                className="h-6 w-6 animate-spin text-blue-500"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
+              <svg className="h-6 w-6 animate-spin text-blue-500" fill="none" viewBox="0 0 24 24">
                 <circle
                   className="opacity-25"
                   cx="12"
@@ -151,9 +150,7 @@ export function ExecutionTimeline({ receiptId, isOpen, onClose }: ExecutionTimel
               </svg>
             </div>
           ) : error ? (
-            <div className="py-8 text-center text-red-500">
-              Failed to load timeline
-            </div>
+            <div className="py-8 text-center text-red-500">Failed to load timeline</div>
           ) : events.length === 0 ? (
             <div className="py-8 text-center text-gray-500 dark:text-gray-400">
               No execution events recorded
@@ -163,7 +160,8 @@ export function ExecutionTimeline({ receiptId, isOpen, onClose }: ExecutionTimel
               {/* Total duration */}
               {totalDuration > 0 && (
                 <div className="mb-4 text-center text-sm text-gray-500 dark:text-gray-400">
-                  Total execution time: <span className="font-medium">{formatDuration(totalDuration)}</span>
+                  Total execution time:{' '}
+                  <span className="font-medium">{formatDuration(totalDuration)}</span>
                 </div>
               )}
 
@@ -221,9 +219,7 @@ export function ExecutionTimeline({ receiptId, isOpen, onClose }: ExecutionTimel
 
                             {/* Error message inline */}
                             {event.errorMessage && (
-                              <div className="mt-1 text-sm opacity-90">
-                                {event.errorMessage}
-                              </div>
+                              <div className="mt-1 text-sm opacity-90">{event.errorMessage}</div>
                             )}
                           </div>
                         </button>
@@ -234,31 +230,39 @@ export function ExecutionTimeline({ receiptId, isOpen, onClose }: ExecutionTimel
                             <div className="grid grid-cols-2 gap-2">
                               {event.rpcEndpoint && (
                                 <div>
-                                  <span className="text-xs text-gray-500 dark:text-gray-400">RPC</span>
+                                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                                    RPC
+                                  </span>
                                   <p className="truncate font-mono text-xs">{event.rpcEndpoint}</p>
                                 </div>
                               )}
                               {event.priorityFee !== undefined && (
                                 <div>
-                                  <span className="text-xs text-gray-500 dark:text-gray-400">Priority Fee</span>
+                                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                                    Priority Fee
+                                  </span>
                                   <p className="font-mono text-xs">{event.priorityFee} lamports</p>
                                 </div>
                               )}
                               {event.slippageBps !== undefined && (
                                 <div>
-                                  <span className="text-xs text-gray-500 dark:text-gray-400">Slippage</span>
+                                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                                    Slippage
+                                  </span>
                                   <p className="font-mono text-xs">{event.slippageBps / 100}%</p>
                                 </div>
                               )}
                               {event.signature && (
                                 <div className="col-span-2">
-                                  <span className="text-xs text-gray-500 dark:text-gray-400">Signature</span>
+                                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                                    Signature
+                                  </span>
                                   <a
                                     href={`https://explorer.solana.com/tx/${event.signature}?cluster=devnet`}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="block truncate font-mono text-xs text-blue-600 hover:underline dark:text-blue-400"
-                                    onClick={(e) => e.stopPropagation()}
+                                    onClick={e => e.stopPropagation()}
                                   >
                                     {event.signature}
                                   </a>
@@ -266,7 +270,9 @@ export function ExecutionTimeline({ receiptId, isOpen, onClose }: ExecutionTimel
                               )}
                               {event.errorCode && (
                                 <div>
-                                  <span className="text-xs text-gray-500 dark:text-gray-400">Error Code</span>
+                                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                                    Error Code
+                                  </span>
                                   <p className="font-mono text-xs text-red-600 dark:text-red-400">
                                     {event.errorCode}
                                   </p>
@@ -274,7 +280,9 @@ export function ExecutionTimeline({ receiptId, isOpen, onClose }: ExecutionTimel
                               )}
                               {event.metadata && Object.keys(event.metadata).length > 0 && (
                                 <div className="col-span-2">
-                                  <span className="text-xs text-gray-500 dark:text-gray-400">Metadata</span>
+                                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                                    Metadata
+                                  </span>
                                   <pre className="mt-1 overflow-x-auto rounded bg-gray-100 p-2 text-xs dark:bg-gray-800">
                                     {JSON.stringify(event.metadata, null, 2)}
                                   </pre>
@@ -294,10 +302,7 @@ export function ExecutionTimeline({ receiptId, isOpen, onClose }: ExecutionTimel
 
         {/* Footer */}
         <div className="border-t border-gray-200 p-4 dark:border-gray-700">
-          <button
-            onClick={onClose}
-            className="btn-primary w-full"
-          >
+          <button onClick={onClose} className="btn-primary w-full">
             Close
           </button>
         </div>

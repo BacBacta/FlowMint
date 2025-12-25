@@ -7,6 +7,7 @@
 
 import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
+
 import { NotificationType, NotificationPriority } from './notificationService.js';
 
 const log = logger.child({ service: 'EmailChannel' });
@@ -14,7 +15,13 @@ const log = logger.child({ service: 'EmailChannel' });
 /**
  * Email template types
  */
-type EmailTemplate = 'dca_executed' | 'stop_loss_triggered' | 'swap_success' | 'swap_failed' | 'intent_completed' | 'generic';
+type EmailTemplate =
+  | 'dca_executed'
+  | 'stop_loss_triggered'
+  | 'swap_success'
+  | 'swap_failed'
+  | 'intent_completed'
+  | 'generic';
 
 /**
  * Email notification configuration
@@ -55,7 +62,8 @@ export class EmailChannel {
 
   constructor(emailConfig?: Partial<EmailConfig>) {
     this.apiKey = emailConfig?.apiKey || process.env.RESEND_API_KEY || '';
-    this.fromEmail = emailConfig?.fromEmail || process.env.EMAIL_FROM || 'notifications@flowmint.io';
+    this.fromEmail =
+      emailConfig?.fromEmail || process.env.EMAIL_FROM || 'notifications@flowmint.io';
     this.fromName = emailConfig?.fromName || 'FlowMint';
     this.enabled = !!this.apiKey;
 
@@ -121,7 +129,7 @@ export class EmailChannel {
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${this.apiKey}`,
+        Authorization: `Bearer ${this.apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -162,10 +170,18 @@ export class EmailChannel {
   /**
    * Generate subject line
    */
-  private getSubjectLine(type: NotificationType, title: string, priority: NotificationPriority): string {
-    const priorityPrefix = priority === NotificationPriority.URGENT ? '🚨 ' :
-                          priority === NotificationPriority.HIGH ? '⚠️ ' : '';
-    
+  private getSubjectLine(
+    type: NotificationType,
+    title: string,
+    priority: NotificationPriority
+  ): string {
+    const priorityPrefix =
+      priority === NotificationPriority.URGENT
+        ? '🚨 '
+        : priority === NotificationPriority.HIGH
+          ? '⚠️ '
+          : '';
+
     return `${priorityPrefix}[FlowMint] ${title}`;
   }
 
@@ -201,18 +217,26 @@ export class EmailChannel {
             <div class="content">
               <h2>${data.title}</h2>
               <p>${data.message}</p>
-              ${data.executionNumber ? `
+              ${
+                data.executionNumber
+                  ? `
                 <div class="metric">
                   <div class="metric-value">#${data.executionNumber}</div>
                   <div class="metric-label">Exécution</div>
                 </div>
-              ` : ''}
-              ${data.amount ? `
+              `
+                  : ''
+              }
+              ${
+                data.amount
+                  ? `
                 <div class="metric">
                   <div class="metric-value">${data.amount}</div>
                   <div class="metric-label">Montant swappé</div>
                 </div>
-              ` : ''}
+              `
+                  : ''
+              }
               <a href="https://flowmint.io/intents" class="button">Voir mes intents →</a>
             </div>
             <div class="footer">
@@ -236,18 +260,26 @@ export class EmailChannel {
             <div class="content">
               <h2>${data.title}</h2>
               <p>${data.message}</p>
-              ${data.triggerPrice ? `
+              ${
+                data.triggerPrice
+                  ? `
                 <div class="metric">
                   <div class="metric-value">$${data.triggerPrice}</div>
                   <div class="metric-label">Prix de déclenchement</div>
                 </div>
-              ` : ''}
-              ${data.currentPrice ? `
+              `
+                  : ''
+              }
+              ${
+                data.currentPrice
+                  ? `
                 <div class="metric">
                   <div class="metric-value warning">$${data.currentPrice}</div>
                   <div class="metric-label">Prix actuel</div>
                 </div>
-              ` : ''}
+              `
+                  : ''
+              }
               <a href="https://flowmint.io/intents" class="button">Voir les détails →</a>
             </div>
             <div class="footer">
@@ -270,15 +302,23 @@ export class EmailChannel {
             <div class="content">
               <h2 class="success">${data.title}</h2>
               <p>${data.message}</p>
-              ${data.inputAmount && data.outputAmount ? `
+              ${
+                data.inputAmount && data.outputAmount
+                  ? `
                 <div class="metric">
                   <div class="metric-value">${data.inputAmount} → ${data.outputAmount}</div>
                   <div class="metric-label">Montant échangé</div>
                 </div>
-              ` : ''}
-              ${data.signature ? `
+              `
+                  : ''
+              }
+              ${
+                data.signature
+                  ? `
                 <a href="https://solscan.io/tx/${data.signature}" class="button">Voir sur Solscan →</a>
-              ` : ''}
+              `
+                  : ''
+              }
             </div>
             <div class="footer">
               <p>FlowMint - Exécution fiable sur Solana</p>
@@ -300,12 +340,16 @@ export class EmailChannel {
             <div class="content">
               <h2 class="error">${data.title}</h2>
               <p>${data.message}</p>
-              ${data.error ? `
+              ${
+                data.error
+                  ? `
                 <div class="metric" style="border-color: #fecaca; background: #fef2f2;">
                   <div class="metric-label">Erreur</div>
                   <div style="color: #dc2626;">${data.error}</div>
                 </div>
-              ` : ''}
+              `
+                  : ''
+              }
               <a href="https://flowmint.io/swap" class="button">Réessayer →</a>
             </div>
             <div class="footer">

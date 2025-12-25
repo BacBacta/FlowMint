@@ -14,10 +14,7 @@ export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders });
 }
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { paymentId: string } }
-) {
+export async function POST(request: NextRequest, { params }: { params: { paymentId: string } }) {
   const backend = process.env.NEXT_PUBLIC_API_URL;
   if (!backend) {
     return NextResponse.json(

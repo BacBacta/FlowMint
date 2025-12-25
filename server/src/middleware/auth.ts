@@ -5,10 +5,10 @@
  * Supports both session-based and stateless authentication.
  */
 
+import bs58 from 'bs58';
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import nacl from 'tweetnacl';
-import bs58 from 'bs58';
 
 import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
@@ -73,7 +73,7 @@ export function verifyWalletSignature(
  */
 export function generateToken(publicKey: string): string {
   const payload: Omit<JwtPayload, 'iat' | 'exp'> = { publicKey };
-  
+
   return jwt.sign(payload, config.jwtSecret, {
     expiresIn: '24h',
     issuer: 'flowmint',
@@ -90,7 +90,7 @@ export function verifyToken(token: string): JwtPayload | null {
       issuer: 'flowmint',
       audience: 'flowmint-api',
     }) as JwtPayload;
-    
+
     return decoded;
   } catch (error) {
     return null;
@@ -102,27 +102,23 @@ export function verifyToken(token: string): JwtPayload | null {
  */
 function extractToken(req: Request): string | null {
   const authHeader = req.headers.authorization;
-  
+
   if (!authHeader) return null;
-  
+
   // Support both "Bearer token" and just "token"
   if (authHeader.startsWith('Bearer ')) {
     return authHeader.substring(7);
   }
-  
+
   return authHeader;
 }
 
 /**
  * Authentication middleware - requires valid JWT
  */
-export function requireAuth(
-  req: AuthenticatedRequest,
-  res: Response,
-  next: NextFunction
-): void {
+export function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
   const token = extractToken(req);
-  
+
   if (!token) {
     res.status(401).json({
       error: 'Authentication required',
@@ -130,9 +126,9 @@ export function requireAuth(
     });
     return;
   }
-  
+
   const payload = verifyToken(token);
-  
+
   if (!payload) {
     res.status(401).json({
       error: 'Invalid token',
@@ -140,7 +136,7 @@ export function requireAuth(
     });
     return;
   }
-  
+
   req.user = { publicKey: payload.publicKey };
   next();
 }
@@ -148,20 +144,16 @@ export function requireAuth(
 /**
  * Optional authentication middleware - attaches user if token present
  */
-export function optionalAuth(
-  req: AuthenticatedRequest,
-  _res: Response,
-  next: NextFunction
-): void {
+export function optionalAuth(req: AuthenticatedRequest, _res: Response, next: NextFunction): void {
   const token = extractToken(req);
-  
+
   if (token) {
     const payload = verifyToken(token);
     if (payload) {
       req.user = { publicKey: payload.publicKey };
     }
   }
-  
+
   next();
 }
 
@@ -179,7 +171,7 @@ export function requireOwnership(paramName: string = 'userPublicKey') {
     }
 
     const resourceOwner = req.params[paramName] || req.body[paramName];
-    
+
     if (!resourceOwner) {
       res.status(400).json({
         error: 'Missing parameter',
@@ -209,9 +201,9 @@ export function authRateLimit(maxAttempts: number = 5, windowMs: number = 60000)
   return (req: Request, res: Response, next: NextFunction): void => {
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
     const now = Date.now();
-    
+
     const attempt = authAttempts.get(ip);
-    
+
     if (attempt) {
       if (now > attempt.resetAt) {
         // Window expired, reset
@@ -229,7 +221,7 @@ export function authRateLimit(maxAttempts: number = 5, windowMs: number = 60000)
     } else {
       authAttempts.set(ip, { count: 1, resetAt: now + windowMs });
     }
-    
+
     next();
   };
 }

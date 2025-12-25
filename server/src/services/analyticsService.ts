@@ -5,8 +5,8 @@
  * Provides insights into success rates, volumes, and user behavior.
  */
 
-import { logger } from '../utils/logger.js';
 import { DatabaseService } from '../db/database.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Time range for analytics queries
@@ -158,9 +158,9 @@ export class AnalyticsService {
     const receipts = await this.db.getReceiptsSince(since);
 
     const totalSwaps = receipts.length;
-    const successfulSwaps = receipts.filter((r) => r.status === 'success').length;
-    const failedSwaps = receipts.filter((r) => r.status === 'failed').length;
-    const pendingSwaps = receipts.filter((r) => r.status === 'pending').length;
+    const successfulSwaps = receipts.filter(r => r.status === 'success').length;
+    const failedSwaps = receipts.filter(r => r.status === 'failed').length;
+    const pendingSwaps = receipts.filter(r => r.status === 'pending').length;
 
     const successRate = totalSwaps > 0 ? successfulSwaps / totalSwaps : 0;
 
@@ -221,21 +221,19 @@ export class AnalyticsService {
 
     const totalIntents = intents.length;
     const activeIntents = allActive.length;
-    const completedIntents = intents.filter((i) => i.status === 'completed').length;
-    const cancelledIntents = intents.filter((i) => i.status === 'cancelled').length;
-    const failedIntents = intents.filter((i) => i.status === 'failed').length;
+    const completedIntents = intents.filter(i => i.status === 'completed').length;
+    const cancelledIntents = intents.filter(i => i.status === 'cancelled').length;
+    const failedIntents = intents.filter(i => i.status === 'failed').length;
 
     // DCA stats
-    const dcaIntents = intents.filter((i) => i.intentType === 'DCA');
-    const activeDca = allActive.filter((i) => i.intentType === 'DCA');
+    const dcaIntents = intents.filter(i => i.intentType === 'DCA');
+    const activeDca = allActive.filter(i => i.intentType === 'DCA');
     const totalSlices = dcaIntents.reduce((sum, i) => sum + i.executionCount, 0);
 
     // Stop-loss stats
-    const stopLossIntents = intents.filter((i) => i.intentType === 'STOP_LOSS');
-    const activeStopLoss = allActive.filter((i) => i.intentType === 'STOP_LOSS');
-    const triggeredStopLoss = stopLossIntents.filter(
-      (i) => i.status === 'completed'
-    ).length;
+    const stopLossIntents = intents.filter(i => i.intentType === 'STOP_LOSS');
+    const activeStopLoss = allActive.filter(i => i.intentType === 'STOP_LOSS');
+    const triggeredStopLoss = stopLossIntents.filter(i => i.status === 'completed').length;
 
     return {
       totalIntents,
@@ -249,8 +247,7 @@ export class AnalyticsService {
         totalSlicesExecuted: totalSlices,
         averageOrderSize:
           dcaIntents.length > 0
-            ? dcaIntents.reduce((sum, i) => sum + parseInt(i.totalAmount), 0) /
-              dcaIntents.length
+            ? dcaIntents.reduce((sum, i) => sum + parseInt(i.totalAmount), 0) / dcaIntents.length
             : 0,
       },
       stopLossStats: {
@@ -310,7 +307,7 @@ export class AnalyticsService {
     const receipts = await this.db.getUserReceipts(userPublicKey, 100);
 
     const totalSwaps = receipts.length;
-    const successfulSwaps = receipts.filter((r) => r.status === 'success').length;
+    const successfulSwaps = receipts.filter(r => r.status === 'success').length;
     const successRate = totalSwaps > 0 ? successfulSwaps / totalSwaps : 0;
 
     let totalPriceImpact = 0;
@@ -318,14 +315,8 @@ export class AnalyticsService {
 
     for (const receipt of receipts) {
       totalPriceImpact += parseFloat(receipt.priceImpactPct);
-      tokenCounts.set(
-        receipt.inputMint,
-        (tokenCounts.get(receipt.inputMint) || 0) + 1
-      );
-      tokenCounts.set(
-        receipt.outputMint,
-        (tokenCounts.get(receipt.outputMint) || 0) + 1
-      );
+      tokenCounts.set(receipt.inputMint, (tokenCounts.get(receipt.inputMint) || 0) + 1);
+      tokenCounts.set(receipt.outputMint, (tokenCounts.get(receipt.outputMint) || 0) + 1);
     }
 
     const favoriteTokens = Array.from(tokenCounts.entries())

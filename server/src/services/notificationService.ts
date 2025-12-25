@@ -149,10 +149,7 @@ export class NotificationService {
       this.channels.push(new WebhookChannel(webhookUrl));
     }
 
-    this.log.info(
-      { channels: this.channels.map((c) => c.name) },
-      'NotificationService initialized'
-    );
+    this.log.info({ channels: this.channels.map(c => c.name) }, 'NotificationService initialized');
   }
 
   /**
@@ -180,12 +177,10 @@ export class NotificationService {
 
     // Send to all channels in parallel
     const results = await Promise.allSettled(
-      this.channels.map((channel) => channel.send(notification))
+      this.channels.map(channel => channel.send(notification))
     );
 
-    const successCount = results.filter(
-      (r) => r.status === 'fulfilled' && r.value
-    ).length;
+    const successCount = results.filter(r => r.status === 'fulfilled' && r.value).length;
 
     this.log.debug(
       {

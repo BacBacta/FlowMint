@@ -118,7 +118,7 @@ export class OracleService {
     const cached = this.cache.get(feedId);
     if (cached && Date.now() - cached.fetchedAt < this.CACHE_TTL) {
       // Update age
-      cached.price.ageSeconds = Math.floor((Date.now() / 1000) - cached.price.publishTime);
+      cached.price.ageSeconds = Math.floor(Date.now() / 1000 - cached.price.publishTime);
       cached.price.isStale = cached.price.ageSeconds > STALENESS_THRESHOLDS.TRADING;
       cached.price.stalenessLevel = this.getStalenessLevel(cached.price.ageSeconds);
       return cached.price;
@@ -153,7 +153,7 @@ export class OracleService {
       // Return cached if available (even if stale)
       if (cached) {
         log.warn({ feedId }, 'Returning stale cached price');
-        cached.price.ageSeconds = Math.floor((Date.now() / 1000) - cached.price.publishTime);
+        cached.price.ageSeconds = Math.floor(Date.now() / 1000 - cached.price.publishTime);
         cached.price.isStale = true;
         cached.price.stalenessLevel = 'very_stale';
         return cached.price;
@@ -183,8 +183,8 @@ export class OracleService {
 
     // Filter to known pairs
     const feedIds = pairs
-      .map((pair) => ({ pair, feedId: PYTH_FEED_IDS[pair] }))
-      .filter((item) => item.feedId !== undefined);
+      .map(pair => ({ pair, feedId: PYTH_FEED_IDS[pair] }))
+      .filter(item => item.feedId !== undefined);
 
     if (feedIds.length === 0) {
       return results;
@@ -193,14 +193,14 @@ export class OracleService {
     try {
       const response = await axios.get(`${PYTH_HERMES_URL}/api/latest_price_feeds`, {
         params: {
-          ids: feedIds.map((f) => f.feedId),
+          ids: feedIds.map(f => f.feedId),
         },
         timeout: 10000,
       });
 
       if (response.data && Array.isArray(response.data)) {
         for (const priceData of response.data) {
-          const feedInfo = feedIds.find((f) => f.feedId === priceData.id);
+          const feedInfo = feedIds.find(f => f.feedId === priceData.id);
           if (feedInfo) {
             const price = this.parsePythPrice(priceData, feedInfo.feedId, feedInfo.pair);
             results.set(feedInfo.pair, price);
@@ -260,10 +260,7 @@ export class OracleService {
     }
 
     // Check trigger condition
-    const triggered =
-      direction === 'below'
-        ? price.price <= threshold
-        : price.price >= threshold;
+    const triggered = direction === 'below' ? price.price <= threshold : price.price >= threshold;
 
     return {
       price,
@@ -302,11 +299,7 @@ export class OracleService {
   /**
    * Parse Pyth price response
    */
-  private parsePythPrice(
-    data: any,
-    feedId: string,
-    pair?: string
-  ): OraclePrice {
+  private parsePythPrice(data: any, feedId: string, pair?: string): OraclePrice {
     const priceInfo = data.price;
     const emaInfo = data.ema_price;
 

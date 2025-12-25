@@ -10,10 +10,11 @@
 
 import { v4 as uuidv4 } from 'uuid';
 
-import { logger } from '../utils/logger.js';
 import { DatabaseService, ReceiptRecord, ExecutionEventType } from '../db/database.js';
-import { RiskSignal, RiskReason } from './riskScoring.js';
+import { logger } from '../utils/logger.js';
+
 import { RetryMetrics } from './retryPolicy.js';
+import { RiskSignal, RiskReason } from './riskScoring.js';
 
 const log = logger.child({ service: 'ReceiptService' });
 
@@ -385,11 +386,7 @@ export class ReceiptService {
   /**
    * Mark receipt as failed
    */
-  async failReceipt(
-    receiptId: string,
-    error: string,
-    _retryMetrics?: RetryMetrics
-  ): Promise<void> {
+  async failReceipt(receiptId: string, error: string, _retryMetrics?: RetryMetrics): Promise<void> {
     const existing = await this.db.getReceipt(receiptId);
     if (!existing) {
       log.warn({ receiptId }, 'Receipt not found for failure');
@@ -423,7 +420,7 @@ export class ReceiptService {
    */
   async getUserReceipts(userPublicKey: string, limit: number = 50): Promise<Receipt[]> {
     const rows = await this.db.getUserReceipts(userPublicKey, limit);
-    return rows.map((row) => this.rowToReceipt(row));
+    return rows.map(row => this.rowToReceipt(row));
   }
 
   /**

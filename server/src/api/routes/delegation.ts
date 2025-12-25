@@ -133,10 +133,7 @@ export function createDelegationRoutes(db: DatabaseService): Router {
       return res.json({ success: true, delegation });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      log.error(
-        { error: message, delegationId: req.params.id },
-        'Failed to confirm delegation'
-      );
+      log.error({ error: message, delegationId: req.params.id }, 'Failed to confirm delegation');
       return res.status(400).json({ error: message });
     }
   });
@@ -190,10 +187,7 @@ export function createDelegationRoutes(db: DatabaseService): Router {
       return res.json(result);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      log.error(
-        { error: message, delegationId: req.params.id },
-        'Failed to create revocation'
-      );
+      log.error({ error: message, delegationId: req.params.id }, 'Failed to create revocation');
       return res.status(400).json({ error: message });
     }
   });

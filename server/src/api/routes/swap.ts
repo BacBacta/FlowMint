@@ -91,7 +91,7 @@ export function createSwapRoutes(db: DatabaseService): Router {
           priceImpactPct: quote.priceImpactPct,
           slippageBps: quote.slippageBps,
           routeSteps: quote.routePlan.length,
-          routes: quote.routePlan.map((step) => ({
+          routes: quote.routePlan.map(step => ({
             label: step.swapInfo.label,
             percent: step.percent,
           })),
@@ -280,20 +280,23 @@ export function createSwapRoutes(db: DatabaseService): Router {
    *
    * Get user's swap receipts
    */
-  router.get('/receipts/:userPublicKey', async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const limit = parseInt(req.query.limit as string, 10) || 50;
-      const receipts = await executionEngine.getUserReceipts(req.params.userPublicKey, limit);
+  router.get(
+    '/receipts/:userPublicKey',
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const limit = parseInt(req.query.limit as string, 10) || 50;
+        const receipts = await executionEngine.getUserReceipts(req.params.userPublicKey, limit);
 
-      res.json({
-        success: true,
-        data: receipts,
-        count: receipts.length,
-      });
-    } catch (error) {
-      next(error);
+        res.json({
+          success: true,
+          data: receipts,
+          count: receipts.length,
+        });
+      } catch (error) {
+        next(error);
+      }
     }
-  });
+  );
 
   /**
    * GET /api/v1/swap/tokens

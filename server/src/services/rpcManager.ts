@@ -64,47 +64,48 @@ export interface RpcManagerConfig {
  * On devnet, we only use the configured RPC URL.
  * On mainnet, additional fallback endpoints can be enabled with proper API keys.
  */
-const DEFAULT_ENDPOINTS: RpcEndpoint[] = config.solana.network === 'mainnet-beta'
-  ? [
-      {
-        url: config.solana.rpcUrl,
-        weight: 10,
-        isPremium: true,
-        name: 'primary',
-      },
-      {
-        url: 'https://api.mainnet-beta.solana.com',
-        weight: 3,
-        rateLimit: 10, // Public endpoints have rate limits
-        name: 'solana-public',
-      },
-      // NOTE: These endpoints require API tokens. Uncomment if tokens are set.
-      // {
-      //   url: 'https://rpc.ankr.com/solana',
-      //   weight: 5,
-      //   name: 'ankr',
-      // },
-      // {
-      //   url: 'https://solana-mainnet.rpc.extrnode.com',
-      //   weight: 3,
-      //   name: 'extrnode',
-      // },
-    ]
-  : [
-      // Devnet: only use the configured devnet RPC
-      {
-        url: config.solana.rpcUrl,
-        weight: 10,
-        isPremium: true,
-        name: 'primary',
-      },
-      {
-        url: 'https://api.devnet.solana.com',
-        weight: 3,
-        rateLimit: 10,
-        name: 'solana-devnet-public',
-      },
-    ];
+const DEFAULT_ENDPOINTS: RpcEndpoint[] =
+  config.solana.network === 'mainnet-beta'
+    ? [
+        {
+          url: config.solana.rpcUrl,
+          weight: 10,
+          isPremium: true,
+          name: 'primary',
+        },
+        {
+          url: 'https://api.mainnet-beta.solana.com',
+          weight: 3,
+          rateLimit: 10, // Public endpoints have rate limits
+          name: 'solana-public',
+        },
+        // NOTE: These endpoints require API tokens. Uncomment if tokens are set.
+        // {
+        //   url: 'https://rpc.ankr.com/solana',
+        //   weight: 5,
+        //   name: 'ankr',
+        // },
+        // {
+        //   url: 'https://solana-mainnet.rpc.extrnode.com',
+        //   weight: 3,
+        //   name: 'extrnode',
+        // },
+      ]
+    : [
+        // Devnet: only use the configured devnet RPC
+        {
+          url: config.solana.rpcUrl,
+          weight: 10,
+          isPremium: true,
+          name: 'primary',
+        },
+        {
+          url: 'https://api.devnet.solana.com',
+          weight: 3,
+          rateLimit: 10,
+          name: 'solana-devnet-public',
+        },
+      ];
 
 /**
  * RPC Manager
@@ -132,10 +133,7 @@ export class RpcManager {
     };
 
     this.initializeEndpoints();
-    this.log.info(
-      { endpointCount: this.endpoints.length },
-      'RPC Manager initialized'
-    );
+    this.log.info({ endpointCount: this.endpoints.length }, 'RPC Manager initialized');
   }
 
   /**
@@ -168,7 +166,7 @@ export class RpcManager {
    */
   start(): void {
     this.log.info('Starting RPC health monitoring');
-    
+
     // Run initial health check
     this.runHealthChecks();
 
@@ -219,8 +217,7 @@ export class RpcManager {
     let lastError: Error | undefined;
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
-      const healthyEndpoints = this.getHealthyEndpoints()
-        .filter((e) => !triedEndpoints.has(e.url));
+      const healthyEndpoints = this.getHealthyEndpoints().filter(e => !triedEndpoints.has(e.url));
 
       if (healthyEndpoints.length === 0) {
         // All healthy endpoints tried, reset and try again
@@ -235,10 +232,10 @@ export class RpcManager {
       try {
         const startTime = Date.now();
         const result = await operation(connection);
-        
+
         // Record success
         this.recordSuccess(endpoint.url, Date.now() - startTime);
-        
+
         return result;
       } catch (error) {
         lastError = error as Error;
@@ -250,7 +247,7 @@ export class RpcManager {
           },
           'RPC request failed, trying next endpoint'
         );
-        
+
         // Record failure
         this.recordFailure(endpoint.url, lastError.message);
       }
@@ -296,7 +293,7 @@ export class RpcManager {
    * Get all healthy endpoints
    */
   private getHealthyEndpoints(): RpcEndpoint[] {
-    return this.endpoints.filter((endpoint) => {
+    return this.endpoints.filter(endpoint => {
       const health = this.healthStatus.get(endpoint.url);
       return health?.isHealthy ?? false;
     });
@@ -358,14 +355,11 @@ export class RpcManager {
    * Run health checks on all endpoints
    */
   private async runHealthChecks(): Promise<void> {
-    const checks = this.endpoints.map((endpoint) => this.checkEndpointHealth(endpoint));
+    const checks = this.endpoints.map(endpoint => this.checkEndpointHealth(endpoint));
     await Promise.allSettled(checks);
 
     const healthyCount = this.getHealthyEndpoints().length;
-    this.log.debug(
-      { healthyCount, totalCount: this.endpoints.length },
-      'Health check completed'
-    );
+    this.log.debug({ healthyCount, totalCount: this.endpoints.length }, 'Health check completed');
   }
 
   /**
@@ -385,10 +379,7 @@ export class RpcManager {
       health.lastCheck = Date.now();
       health.consecutiveFailures = 0;
 
-      this.log.debug(
-        { endpoint: endpoint.name || endpoint.url, latencyMs },
-        'Endpoint healthy'
-      );
+      this.log.debug({ endpoint: endpoint.name || endpoint.url, latencyMs }, 'Endpoint healthy');
     } catch (error) {
       health.lastError = (error as Error).message;
       health.lastCheck = Date.now();
@@ -423,12 +414,11 @@ export class RpcManager {
     averageLatencyMs: number;
   } {
     const statuses = Array.from(this.healthStatus.values());
-    const healthyCount = statuses.filter((s) => s.isHealthy).length;
+    const healthyCount = statuses.filter(s => s.isHealthy).length;
     const totalSuccess = statuses.reduce((sum, s) => sum + s.successCount, 0);
     const totalFailure = statuses.reduce((sum, s) => sum + s.failureCount, 0);
     const totalRequests = totalSuccess + totalFailure;
-    const avgLatency =
-      statuses.reduce((sum, s) => sum + s.latencyMs, 0) / statuses.length;
+    const avgLatency = statuses.reduce((sum, s) => sum + s.latencyMs, 0) / statuses.length;
 
     return {
       totalEndpoints: this.endpoints.length,
@@ -443,7 +433,7 @@ export class RpcManager {
    * Force refresh an endpoint's health
    */
   async refreshEndpoint(url: string): Promise<boolean> {
-    const endpoint = this.endpoints.find((e) => e.url === url);
+    const endpoint = this.endpoints.find(e => e.url === url);
     if (!endpoint) return false;
 
     await this.checkEndpointHealth(endpoint);
@@ -454,7 +444,7 @@ export class RpcManager {
    * Sleep utility
    */
   private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 }
 

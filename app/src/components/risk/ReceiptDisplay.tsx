@@ -91,28 +91,27 @@ export function ReceiptDisplay({
   return (
     <div
       className={`
-        rounded-lg border border-gray-200 dark:border-gray-700 
-        bg-white dark:bg-gray-800 overflow-hidden
+        overflow-hidden rounded-lg border border-gray-200 
+        bg-white dark:border-gray-700 dark:bg-gray-800
         ${className}
       `}
     >
       {/* Header */}
-      <div className="px-4 py-3 bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
+      <div className="border-b border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-700 dark:bg-gray-900/50">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <h3 className="font-medium text-gray-800 dark:text-gray-200">
-              Swap Receipt
-            </h3>
+            <h3 className="font-medium text-gray-800 dark:text-gray-200">Swap Receipt</h3>
             <RiskBadge level={receipt.risk.level} size="sm" />
           </div>
           <span
             className={`
-              px-2 py-0.5 rounded text-xs font-medium
-              ${receipt.status === 'confirmed'
-                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                : receipt.status === 'failed'
-                ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+              rounded px-2 py-0.5 text-xs font-medium
+              ${
+                receipt.status === 'confirmed'
+                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                  : receipt.status === 'failed'
+                    ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                    : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
               }
             `}
           >
@@ -122,17 +121,17 @@ export function ReceiptDisplay({
       </div>
 
       {/* Content */}
-      <div className="p-4 space-y-4">
+      <div className="space-y-4 p-4">
         {/* Amounts */}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <p className="text-xs text-gray-500 dark:text-gray-500 mb-1">Sent</p>
+            <p className="mb-1 text-xs text-gray-500 dark:text-gray-500">Sent</p>
             <p className="text-lg font-semibold text-gray-800 dark:text-gray-200">
               {formatAmount(receipt.request.amountIn, inputDecimals)} {inputSymbol}
             </p>
           </div>
           <div>
-            <p className="text-xs text-gray-500 dark:text-gray-500 mb-1">
+            <p className="mb-1 text-xs text-gray-500 dark:text-gray-500">
               {receipt.result?.outAmountActual ? 'Received' : 'Expected'}
             </p>
             <p className="text-lg font-semibold text-gray-800 dark:text-gray-200">
@@ -147,11 +146,9 @@ export function ReceiptDisplay({
 
         {/* Quote vs Actual */}
         {receipt.result?.outAmountActual && receipt.diff && (
-          <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-900/50">
+          <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-900/50">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600 dark:text-gray-400">
-                Quote vs Actual
-              </span>
+              <span className="text-sm text-gray-600 dark:text-gray-400">Quote vs Actual</span>
               <div className="flex items-center gap-1">
                 <DeltaIcon
                   size={16}
@@ -159,8 +156,8 @@ export function ReceiptDisplay({
                     deltaPositive
                       ? 'text-green-500'
                       : deltaPct < 0
-                      ? 'text-red-500'
-                      : 'text-gray-400'
+                        ? 'text-red-500'
+                        : 'text-gray-400'
                   }
                 />
                 <span
@@ -168,8 +165,8 @@ export function ReceiptDisplay({
                     deltaPositive
                       ? 'text-green-600 dark:text-green-400'
                       : deltaPct < 0
-                      ? 'text-red-600 dark:text-red-400'
-                      : 'text-gray-600 dark:text-gray-400'
+                        ? 'text-red-600 dark:text-red-400'
+                        : 'text-gray-600 dark:text-gray-400'
                   }`}
                 >
                   {deltaPositive ? '+' : ''}
@@ -178,12 +175,8 @@ export function ReceiptDisplay({
               </div>
             </div>
             <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-gray-500 dark:text-gray-500">
-              <div>
-                Quoted: {formatAmount(receipt.diff.quotedOutAmount, outputDecimals)}
-              </div>
-              <div>
-                Actual: {formatAmount(receipt.diff.actualOutAmount || '0', outputDecimals)}
-              </div>
+              <div>Quoted: {formatAmount(receipt.diff.quotedOutAmount, outputDecimals)}</div>
+              <div>Actual: {formatAmount(receipt.diff.actualOutAmount || '0', outputDecimals)}</div>
             </div>
           </div>
         )}
@@ -210,7 +203,7 @@ export function ReceiptDisplay({
           </div>
           <div className="flex justify-between">
             <span className="text-gray-500 dark:text-gray-500">Mode</span>
-            <span className="text-gray-700 dark:text-gray-300 capitalize">
+            <span className="capitalize text-gray-700 dark:text-gray-300">
               {receipt.request.mode}
             </span>
           </div>
@@ -224,25 +217,21 @@ export function ReceiptDisplay({
           )}
           <div className="flex justify-between">
             <span className="text-gray-500 dark:text-gray-500">Attempts</span>
-            <span className="text-gray-700 dark:text-gray-300">
-              {receipt.execution.attempts}
-            </span>
+            <span className="text-gray-700 dark:text-gray-300">{receipt.execution.attempts}</span>
           </div>
         </div>
 
         {/* Signature */}
         {receipt.signature && (
-          <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
-            <p className="text-xs text-gray-500 dark:text-gray-500 mb-1">
-              Transaction Signature
-            </p>
+          <div className="border-t border-gray-200 pt-3 dark:border-gray-700">
+            <p className="mb-1 text-xs text-gray-500 dark:text-gray-500">Transaction Signature</p>
             <div className="flex items-center gap-2">
-              <code className="flex-1 text-xs text-gray-600 dark:text-gray-400 truncate">
+              <code className="flex-1 truncate text-xs text-gray-600 dark:text-gray-400">
                 {receipt.signature}
               </code>
               <button
                 onClick={copySignature}
-                className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                className="rounded p-1 hover:bg-gray-100 dark:hover:bg-gray-700"
                 title="Copy signature"
               >
                 {copiedSignature ? (
@@ -255,7 +244,7 @@ export function ReceiptDisplay({
                 href={`https://solscan.io/tx/${receipt.signature}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                className="rounded p-1 hover:bg-gray-100 dark:hover:bg-gray-700"
                 title="View on Solscan"
               >
                 <ExternalLink size={16} className="text-gray-400" />
@@ -265,7 +254,7 @@ export function ReceiptDisplay({
         )}
 
         {/* Timestamp */}
-        <div className="text-xs text-gray-400 text-center">
+        <div className="text-center text-xs text-gray-400">
           {new Date(receipt.createdAt).toLocaleString()}
         </div>
       </div>

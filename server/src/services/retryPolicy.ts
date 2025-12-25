@@ -210,8 +210,7 @@ export function calculateBackoffDelay(
   }
 
   // Exponential backoff with jitter
-  const exponentialDelay =
-    strategy.initialDelayMs * Math.pow(strategy.backoffMultiplier, attempt);
+  const exponentialDelay = strategy.initialDelayMs * Math.pow(strategy.backoffMultiplier, attempt);
   const jitter = Math.random() * strategy.jitterMs;
   const totalDelay = Math.min(exponentialDelay + jitter, strategy.maxDelayMs);
 
@@ -321,15 +320,12 @@ export interface RetryMetrics {
 /**
  * Build retry metrics from state
  */
-export function buildRetryMetrics(
-  state: RetryState,
-  success: boolean
-): RetryMetrics {
+export function buildRetryMetrics(state: RetryState, success: boolean): RetryMetrics {
   return {
     totalAttempts: state.attempts,
     totalRequotes: state.requotes,
     totalTimeMs: Date.now() - state.startTime,
     finalStatus: success ? 'success' : 'failed',
-    errorCodes: state.errors.map((e) => e.code),
+    errorCodes: state.errors.map(e => e.code),
   };
 }

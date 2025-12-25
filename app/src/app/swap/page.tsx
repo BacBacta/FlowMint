@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { Header } from '@/components/Header';
+import { useState } from 'react';
+
 import { Footer } from '@/components/Footer';
+import { Header } from '@/components/Header';
 import { SwapForm } from '@/components/swap/SwapForm';
 import { SwapHistory } from '@/components/swap/SwapHistory';
 

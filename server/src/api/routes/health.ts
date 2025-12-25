@@ -2,13 +2,13 @@
  * Health Check Routes
  */
 
-import { Router, Request, Response as ExpressResponse } from 'express';
 import { Connection } from '@solana/web3.js';
+import { Router, Request, Response as ExpressResponse } from 'express';
 
 import { config } from '../../config/index.js';
 
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     const t = setTimeout(resolve, ms);
     // Don't keep the process alive just for timeouts.
     (t as any)?.unref?.();
@@ -29,7 +29,10 @@ async function fetchWithTimeout(url: string, timeoutMs: number): Promise<globalT
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   let timeout: any;
   const timeoutPromise = new Promise<T>((_resolve, reject) => {
-    timeout = setTimeout(() => reject(new Error(`${label} timeout after ${timeoutMs}ms`)), timeoutMs);
+    timeout = setTimeout(
+      () => reject(new Error(`${label} timeout after ${timeoutMs}ms`)),
+      timeoutMs
+    );
     (timeout as any)?.unref?.();
   });
 
@@ -130,9 +133,9 @@ export function createHealthRoutes(): Router {
       };
     }
 
-    const overallStatus = Object.values(checks).every((c) => c.status === 'ok')
+    const overallStatus = Object.values(checks).every(c => c.status === 'ok')
       ? 'ok'
-      : Object.values(checks).some((c) => c.status === 'error')
+      : Object.values(checks).some(c => c.status === 'error')
         ? 'error'
         : 'degraded';
 

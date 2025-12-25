@@ -11,6 +11,7 @@
 import { v4 as uuidv4 } from 'uuid';
 
 import { logger } from '../utils/logger.js';
+
 import { jupiterService } from './jupiterService.js';
 
 const log = logger.child({ service: 'AdvancedOrders' });
@@ -22,23 +23,19 @@ const log = logger.child({ service: 'AdvancedOrders' });
 /**
  * Advanced order types
  */
-export type AdvancedOrderType =
-  | 'trailing_stop'
-  | 'bracket'
-  | 'take_profit'
-  | 'stop_loss';
+export type AdvancedOrderType = 'trailing_stop' | 'bracket' | 'take_profit' | 'stop_loss';
 
 /**
  * Order status
  */
 export type AdvancedOrderStatus =
-  | 'pending'      // Order created, waiting for activation
-  | 'active'       // Order is being monitored
-  | 'triggered'    // Order conditions met, executing
-  | 'executed'     // Order successfully executed
-  | 'cancelled'    // Order was cancelled
-  | 'expired'      // Order expired without triggering
-  | 'failed';      // Order execution failed
+  | 'pending' // Order created, waiting for activation
+  | 'active' // Order is being monitored
+  | 'triggered' // Order conditions met, executing
+  | 'executed' // Order successfully executed
+  | 'cancelled' // Order was cancelled
+  | 'expired' // Order expired without triggering
+  | 'failed'; // Order execution failed
 
 /**
  * Base order configuration
@@ -138,8 +135,8 @@ export interface AdvancedOrder {
   triggerPrice?: number;
 
   // Tracking fields
-  highestPrice?: number;        // For trailing stop
-  currentTrailPrice?: number;   // Current trigger price for trailing stop
+  highestPrice?: number; // For trailing stop
+  currentTrailPrice?: number; // Current trigger price for trailing stop
   triggeredAt?: number;
   executedAt?: number;
   txSignature?: string;
@@ -213,7 +210,10 @@ export class AdvancedOrdersService {
     };
 
     this.orders.set(id, order);
-    log.info({ orderId: id, trailBps: config.trailBps, highestPrice: currentPrice }, 'Trailing stop created');
+    log.info(
+      { orderId: id, trailBps: config.trailBps, highestPrice: currentPrice },
+      'Trailing stop created'
+    );
 
     return order;
   }
@@ -417,7 +417,10 @@ export class AdvancedOrdersService {
         order.highestPrice = currentPrice;
         order.currentTrailPrice = this.calculateTrailPrice(currentPrice, order.trailBps!);
         order.updatedAt = Date.now();
-        log.info({ orderId: order.id, activationPrice: order.activationPrice }, 'Trailing stop activated');
+        log.info(
+          { orderId: order.id, activationPrice: order.activationPrice },
+          'Trailing stop activated'
+        );
       }
       return {
         shouldTrigger: false,
@@ -643,7 +646,10 @@ export class AdvancedOrdersService {
     let removed = 0;
 
     for (const [id, order] of this.orders.entries()) {
-      if (order.createdAt < cutoff && ['executed', 'cancelled', 'expired', 'failed'].includes(order.status)) {
+      if (
+        order.createdAt < cutoff &&
+        ['executed', 'cancelled', 'expired', 'failed'].includes(order.status)
+      ) {
         this.orders.delete(id);
         removed++;
       }

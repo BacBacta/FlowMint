@@ -11,8 +11,8 @@
  * - Backrunning: Profit from price impact after large trades
  */
 
-import axios, { AxiosInstance } from 'axios';
 import { Connection, VersionedTransaction, TransactionSignature } from '@solana/web3.js';
+import axios, { AxiosInstance } from 'axios';
 
 import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
@@ -31,12 +31,7 @@ export type MEVProtectionMode = 'jito' | 'priority' | 'none';
 /**
  * Jito bundle status
  */
-export type JitoBundleStatus =
-  | 'pending'
-  | 'landed'
-  | 'failed'
-  | 'dropped'
-  | 'invalid';
+export type JitoBundleStatus = 'pending' | 'landed' | 'failed' | 'dropped' | 'invalid';
 
 /**
  * Jito bundle response
@@ -133,8 +128,7 @@ export class MEVProtectionService {
     this.connection = new Connection(config.solana.rpcUrl, 'confirmed');
 
     // Use configured Jito endpoint or default
-    this.jitoEndpoint =
-      process.env.JITO_ENDPOINT || JITO_ENDPOINTS.mainnet;
+    this.jitoEndpoint = process.env.JITO_ENDPOINT || JITO_ENDPOINTS.mainnet;
 
     this.jitoClient = axios.create({
       baseURL: this.jitoEndpoint,
@@ -213,9 +207,7 @@ export class MEVProtectionService {
       const bundleId = bundleResponse.data.result;
 
       if (!bundleId) {
-        throw new Error(
-          bundleResponse.data.error?.message || 'Failed to submit bundle'
-        );
+        throw new Error(bundleResponse.data.error?.message || 'Failed to submit bundle');
       }
 
       log.info({ bundleId, signature }, 'Jito bundle submitted');
@@ -226,10 +218,7 @@ export class MEVProtectionService {
       const latencyMs = Date.now() - startTime;
 
       if (bundleStatus.status === 'landed') {
-        log.info(
-          { bundleId, slot: bundleStatus.slot, latencyMs },
-          'Jito bundle landed'
-        );
+        log.info({ bundleId, slot: bundleStatus.slot, latencyMs }, 'Jito bundle landed');
 
         return {
           signature,
@@ -337,8 +326,7 @@ export class MEVProtectionService {
       {
         signature,
         blockhash: (await this.connection.getLatestBlockhash()).blockhash,
-        lastValidBlockHeight: (await this.connection.getLatestBlockhash())
-          .lastValidBlockHeight,
+        lastValidBlockHeight: (await this.connection.getLatestBlockhash()).lastValidBlockHeight,
       },
       options.commitment || 'confirmed'
     );
@@ -380,8 +368,7 @@ export class MEVProtectionService {
     log.info({ signature }, 'Transaction submitted directly');
 
     // Confirm transaction
-    const { blockhash, lastValidBlockHeight } =
-      await this.connection.getLatestBlockhash();
+    const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
 
     const confirmation = await this.connection.confirmTransaction(
       {

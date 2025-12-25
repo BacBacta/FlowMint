@@ -20,7 +20,14 @@ export async function OPTIONS() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userPublicKey, inputMint, outputMint, amount, slippageBps, protectedMode } = body;
+    const {
+      userPublicKey,
+      inputMint,
+      outputMint,
+      amount,
+      slippageBps: _slippageBps,
+      protectedMode: _protectedMode,
+    } = body;
 
     if (!userPublicKey || !inputMint || !outputMint || !amount) {
       return NextResponse.json(
@@ -34,7 +41,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: 'Swap execution requires the FlowMint backend server. Please run the server locally or deploy it.',
+        error:
+          'Swap execution requires the FlowMint backend server. Please run the server locally or deploy it.',
         hint: 'Run: cd server && npm run dev',
       },
       { status: 503, headers: corsHeaders }

@@ -6,16 +6,14 @@
  */
 
 import { Connection, PublicKey, VersionedTransaction } from '@solana/web3.js';
-import {
-  DatabaseService,
-  InvoiceReservationRecord,
-  PaymentLegRecord,
-} from '../db/database';
-import { RelayerService } from './relayerService';
+
+import { DatabaseService, InvoiceReservationRecord, PaymentLegRecord } from '../db/database';
 import { logger } from '../utils/logger';
 
-const LEG_TIMEOUT_MS = 90_000; // 90 seconds per leg
-const RETRY_DELAY_MS = 2_000; // 2 seconds between retries
+import { RelayerService } from './relayerService';
+
+const _LEG_TIMEOUT_MS = 90_000; // 90 seconds per leg
+const _RETRY_DELAY_MS = 2_000; // 2 seconds between retries
 
 export interface ExecuteLegRequest {
   leg: PaymentLegRecord;
@@ -58,13 +56,16 @@ export class SplitTenderExecutor {
   async executeLeg(request: ExecuteLegRequest): Promise<ExecuteLegResult> {
     const { leg, reservation, payerPublicKey, signedTransaction } = request;
 
-    this.log.info({
-      legId: leg.id,
-      reservationId: reservation.id,
-      payMint: leg.payMint,
-      amountIn: leg.amountIn,
-      legIndex: leg.legIndex,
-    }, 'Executing split-tender leg');
+    this.log.info(
+      {
+        legId: leg.id,
+        reservationId: reservation.id,
+        payMint: leg.payMint,
+        amountIn: leg.amountIn,
+        legIndex: leg.legIndex,
+      },
+      'Executing split-tender leg'
+    );
 
     // Check if reservation is still valid
     if (reservation.status !== 'active') {
@@ -117,11 +118,14 @@ export class SplitTenderExecutor {
       // Update reservation progress
       await this.updateReservationProgress(reservation.id, actualUsdcOut);
 
-      this.log.info({
-        legId: leg.id,
-        txSignature,
-        actualUsdcOut,
-      }, 'Leg completed successfully');
+      this.log.info(
+        {
+          legId: leg.id,
+          txSignature,
+          actualUsdcOut,
+        },
+        'Leg completed successfully'
+      );
 
       return {
         success: true,
@@ -224,11 +228,14 @@ export class SplitTenderExecutor {
     });
 
     if (newStatus === 'completed') {
-      this.log.info({
-        reservationId,
-        invoiceId: reservation.invoiceId,
-        totalCollected: newCollected.toString(),
-      }, 'Split-tender reservation completed');
+      this.log.info(
+        {
+          reservationId,
+          invoiceId: reservation.invoiceId,
+          totalCollected: newCollected.toString(),
+        },
+        'Split-tender reservation completed'
+      );
     }
   }
 
@@ -242,12 +249,13 @@ export class SplitTenderExecutor {
     const legs = await this.db.getLegsByReservation(reservationId);
     const plan = JSON.parse(reservation.planJson);
 
-    const currentLeg = legs.find((l) => l.status === 'executing' || l.status === 'pending');
+    const currentLeg = legs.find(l => l.status === 'executing' || l.status === 'pending');
     const currentLegIndex = currentLeg?.legIndex ?? reservation.completedLegs;
 
-    const percentComplete = reservation.totalLegs > 0
-      ? Math.round((reservation.completedLegs / reservation.totalLegs) * 100)
-      : 0;
+    const percentComplete =
+      reservation.totalLegs > 0
+        ? Math.round((reservation.completedLegs / reservation.totalLegs) * 100)
+        : 0;
 
     return {
       reservationId,
@@ -269,11 +277,14 @@ export class SplitTenderExecutor {
     reservation: InvoiceReservationRecord,
     failedLeg: PaymentLegRecord
   ): Promise<void> {
-    this.log.warn({
-      reservationId: reservation.id,
-      failedLegId: failedLeg.id,
-      usdcCollected: reservation.usdcCollected,
-    }, 'Handling partial failure, initiating refund');
+    this.log.warn(
+      {
+        reservationId: reservation.id,
+        failedLegId: failedLeg.id,
+        usdcCollected: reservation.usdcCollected,
+      },
+      'Handling partial failure, initiating refund'
+    );
 
     await this.db.updateInvoiceReservation(reservation.id, {
       status: 'partial-failure',
@@ -282,11 +293,14 @@ export class SplitTenderExecutor {
     // If we collected any USDC from previous legs, queue refund
     if (BigInt(reservation.usdcCollected) > 0n) {
       // TODO: Implement refund queue
-      this.log.info({
-        reservationId: reservation.id,
-        refundAmount: reservation.usdcCollected,
-        payer: reservation.payer,
-      }, 'Refund queued for partial failure');
+      this.log.info(
+        {
+          reservationId: reservation.id,
+          refundAmount: reservation.usdcCollected,
+          payer: reservation.payer,
+        },
+        'Refund queued for partial failure'
+      );
     }
   }
 
@@ -314,10 +328,13 @@ export class SplitTenderExecutor {
 
     // Handle refund if any USDC was collected
     if (BigInt(reservation.usdcCollected) > 0n) {
-      this.log.info({
-        reservationId,
-        refundAmount: reservation.usdcCollected,
-      }, 'Initiating refund for expired reservation');
+      this.log.info(
+        {
+          reservationId,
+          refundAmount: reservation.usdcCollected,
+        },
+        'Initiating refund for expired reservation'
+      );
     }
   }
 
@@ -334,9 +351,7 @@ export class SplitTenderExecutor {
       'insufficient funds for rent',
     ];
 
-    return retryablePatterns.some((pattern) =>
-      error.toLowerCase().includes(pattern)
-    );
+    return retryablePatterns.some(pattern => error.toLowerCase().includes(pattern));
   }
 
   /**
@@ -373,10 +388,13 @@ export class SplitTenderExecutor {
 
     for (const leg of pendingLegs) {
       if (leg.retryCount < leg.maxRetries) {
-        this.log.info({
-          legId: leg.id,
-          retryCount: leg.retryCount,
-        }, 'Resuming pending leg');
+        this.log.info(
+          {
+            legId: leg.id,
+            retryCount: leg.retryCount,
+          },
+          'Resuming pending leg'
+        );
 
         // Note: Actual execution would require signed transaction from client
         // This is just marking for retry

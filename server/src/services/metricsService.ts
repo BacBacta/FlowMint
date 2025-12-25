@@ -5,13 +5,7 @@
  * Exposes counters, histograms, and gauges for observability.
  */
 
-import {
-  Counter,
-  Histogram,
-  Gauge,
-  Registry,
-  collectDefaultMetrics,
-} from 'prom-client';
+import { Counter, Histogram, Gauge, Registry, collectDefaultMetrics } from 'prom-client';
 
 import { logger } from '../utils/logger.js';
 
@@ -265,11 +259,7 @@ export class MetricsService {
   /**
    * Record a blocked operation due to risk gating
    */
-  recordRiskBlocked(
-    type: OperationType,
-    riskLevel: RiskLevel,
-    reason: string
-  ): void {
+  recordRiskBlocked(type: OperationType, riskLevel: RiskLevel, reason: string): void {
     this.riskBlockedTotal.inc({ type, risk_level: riskLevel, reason });
     log.warn({ type, riskLevel, reason }, 'Operation blocked by risk gating');
   }

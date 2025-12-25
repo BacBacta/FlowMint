@@ -16,7 +16,7 @@ export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders });
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   return NextResponse.json(
     {
       success: false,
@@ -28,8 +28,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(
-  request: NextRequest,
-  { params }: { params: { userPublicKey: string } }
+  _request: NextRequest,
+  { params: _params }: { params: { userPublicKey: string } }
 ) {
   // Return empty array for user intents
   return NextResponse.json([], { headers: corsHeaders });
