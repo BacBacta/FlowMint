@@ -167,6 +167,173 @@ export function createPortfolioPayRouter(): Router {
     }
   });
 
+  /**
+   * GET /api/v1/merchants/:merchantId/invoices
+   * Get all invoices for a merchant (Merchant Portal)
+   */
+  router.get('/merchants/:merchantId/invoices', async (req: Request, res: Response) => {
+    try {
+      const { merchantId } = req.params;
+      const { status, from, to, limit = '50', offset = '0' } = req.query;
+
+      // Verify merchant exists
+      const merchant = await db.getMerchant(merchantId);
+      if (!merchant) {
+        return res.status(404).json({ error: 'Merchant not found' });
+      }
+
+      // Get invoices with filters
+      const invoices = await db.getInvoicesByMerchant(merchantId, {
+        status: status as string,
+        fromDate: from ? parseInt(from as string, 10) : undefined,
+        toDate: to ? parseInt(to as string, 10) : undefined,
+        limit: parseInt(limit as string, 10),
+        offset: parseInt(offset as string, 10),
+      });
+
+      // Calculate stats
+      const stats = {
+        total: invoices.length,
+        paid: invoices.filter(i => i.status === 'paid').length,
+        pending: invoices.filter(i => i.status === 'pending').length,
+        expired: invoices.filter(i => i.status === 'expired').length,
+        totalRevenue: invoices
+          .filter(i => i.status === 'paid')
+          .reduce((sum, i) => sum + parseFloat(i.amountOut), 0)
+          .toFixed(2),
+      };
+
+      log.info({ merchantId, count: invoices.length }, 'Retrieved merchant invoices');
+
+      res.json({
+        merchantId,
+        invoices: invoices.map(inv => ({
+          id: inv.id,
+          orderId: inv.orderId,
+          amountOut: inv.amountOut,
+          settleMint: inv.settleMint,
+          status: inv.status,
+          createdAt: inv.createdAt,
+          expiresAt: inv.expiresAt,
+          paidAt: inv.paidAt,
+          txSignature: inv.txSignature,
+        })),
+        stats,
+        pagination: {
+          limit: parseInt(limit as string, 10),
+          offset: parseInt(offset as string, 10),
+          hasMore: invoices.length === parseInt(limit as string, 10),
+        },
+      });
+    } catch (error) {
+      log.error({ error }, 'Failed to get merchant invoices');
+      res.status(500).json({ error: 'Failed to get merchant invoices' });
+    }
+  });
+
+  /**
+   * GET /api/v1/merchants/:merchantId/stats
+   * Get merchant dashboard statistics
+   */
+  router.get('/merchants/:merchantId/stats', async (req: Request, res: Response) => {
+    try {
+      const { merchantId } = req.params;
+      const { period = '30d' } = req.query;
+
+      const merchant = await db.getMerchant(merchantId);
+      if (!merchant) {
+        return res.status(404).json({ error: 'Merchant not found' });
+      }
+
+      // Calculate period start
+      const periodDays = period === '7d' ? 7 : period === '30d' ? 30 : period === '90d' ? 90 : 30;
+      const periodStart = Date.now() - periodDays * 24 * 60 * 60 * 1000;
+
+      // Get all invoices for period
+      const invoices = await db.getInvoicesByMerchant(merchantId, {
+        fromDate: periodStart,
+      });
+
+      const paidInvoices = invoices.filter(i => i.status === 'paid');
+      const totalRevenue = paidInvoices.reduce((sum, i) => sum + parseFloat(i.amountOut), 0);
+      const avgTransactionSize = paidInvoices.length > 0 ? totalRevenue / paidInvoices.length : 0;
+
+      // Group by day for chart data
+      const dailyRevenue: Record<string, number> = {};
+      paidInvoices.forEach(inv => {
+        if (inv.paidAt) {
+          const day = new Date(inv.paidAt).toISOString().split('T')[0];
+          dailyRevenue[day] = (dailyRevenue[day] || 0) + parseFloat(inv.amountOut);
+        }
+      });
+
+      res.json({
+        merchantId,
+        period,
+        stats: {
+          totalRevenue: totalRevenue.toFixed(2),
+          totalTransactions: paidInvoices.length,
+          avgTransactionSize: avgTransactionSize.toFixed(2),
+          pendingInvoices: invoices.filter(i => i.status === 'pending').length,
+          conversionRate:
+            invoices.length > 0
+              ? ((paidInvoices.length / invoices.length) * 100).toFixed(1)
+              : '0.0',
+        },
+        chartData: Object.entries(dailyRevenue)
+          .map(([date, amount]) => ({ date, amount }))
+          .sort((a, b) => a.date.localeCompare(b.date)),
+      });
+    } catch (error) {
+      log.error({ error }, 'Failed to get merchant stats');
+      res.status(500).json({ error: 'Failed to get merchant stats' });
+    }
+  });
+
+  /**
+   * POST /api/v1/merchants/:merchantId/invoices/export
+   * Export invoices as CSV
+   */
+  router.post('/merchants/:merchantId/invoices/export', async (req: Request, res: Response) => {
+    try {
+      const { merchantId } = req.params;
+      const { from, to, format = 'csv' } = req.body;
+
+      const merchant = await db.getMerchant(merchantId);
+      if (!merchant) {
+        return res.status(404).json({ error: 'Merchant not found' });
+      }
+
+      const invoices = await db.getInvoicesByMerchant(merchantId, {
+        fromDate: from,
+        toDate: to,
+        limit: 10000,
+      });
+
+      if (format === 'csv') {
+        const headers = 'Invoice ID,Order ID,Amount,Status,Created At,Paid At,TX Signature\n';
+        const rows = invoices
+          .map(
+            i =>
+              `${i.id},${i.orderId || ''},${i.amountOut},${i.status},${new Date(i.createdAt).toISOString()},${i.paidAt ? new Date(i.paidAt).toISOString() : ''},${i.txSignature || ''}`
+          )
+          .join('\n');
+
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="invoices-${merchantId}-${Date.now()}.csv"`
+        );
+        res.send(headers + rows);
+      } else {
+        res.json({ invoices });
+      }
+    } catch (error) {
+      log.error({ error }, 'Failed to export invoices');
+      res.status(500).json({ error: 'Failed to export invoices' });
+    }
+  });
+
   // ==================== Policy Routes ====================
 
   /**
@@ -1006,10 +1173,25 @@ export function createPortfolioPayRouter(): Router {
 
   /**
    * GET /api/v1/attestations/:id/verify
-   * Verify an attestation
+   * Verify an attestation. Optionally verify a specific leg with ?leg=<n>
    */
   router.get('/attestations/:id/verify', async (req: Request, res: Response) => {
     try {
+      const legParam = req.query.leg as string | undefined;
+      const legIndex = legParam !== undefined ? parseInt(legParam, 10) : undefined;
+
+      // If leg is specified, verify specific leg proof
+      if (legIndex !== undefined && !isNaN(legIndex)) {
+        const result = await attestationService.verifyLegProof(req.params.id, legIndex);
+        return res.json({
+          valid: result.valid,
+          legIndex,
+          errors: result.errors,
+          proof: result.proof,
+        });
+      }
+
+      // Otherwise verify entire attestation
       const result = await attestationService.verifyAttestation(req.params.id);
 
       res.json({

@@ -344,6 +344,106 @@ export class AttestationService {
   }
 
   /**
+   * Verify a specific leg proof within an attestation
+   */
+  async verifyLegProof(
+    attestationId: string,
+    legIndex: number
+  ): Promise<{
+    valid: boolean;
+    errors: string[];
+    proof?: {
+      legIndex: number;
+      merkleProof: string[];
+      leafHash: string;
+    };
+  }> {
+    const errors: string[] = [];
+
+    const attestation = await this.db.getAttestation(attestationId);
+    if (!attestation) {
+      return { valid: false, errors: ['Attestation not found'] };
+    }
+
+    try {
+      // Parse payload to get leg information
+      const payload: AttestationPayload = JSON.parse(attestation.payloadJson);
+
+      // Check if attestation has leg proofs (V2 feature)
+      const attestationWithProofs = attestation as AttestationRecord & {
+        legProofs?: Array<{
+          legIndex: number;
+          merkleProof: string[];
+          leafHash: string;
+        }>;
+      };
+
+      if (!attestationWithProofs.legProofs || attestationWithProofs.legProofs.length === 0) {
+        // Fallback: verify entire attestation for single-leg payments
+        if (legIndex === 0) {
+          const result = await this.verifyAttestation(attestationId);
+          return {
+            valid: result.valid,
+            errors: result.errors,
+            proof: {
+              legIndex: 0,
+              merkleProof: [],
+              leafHash: crypto.createHash('sha256').update(attestation.payloadJson).digest('hex'),
+            },
+          };
+        }
+        return { valid: false, errors: [`Leg ${legIndex} not found in attestation`] };
+      }
+
+      // Find specific leg proof
+      const legProof = attestationWithProofs.legProofs.find(lp => lp.legIndex === legIndex);
+      if (!legProof) {
+        return { valid: false, errors: [`Leg ${legIndex} not found in attestation`] };
+      }
+
+      // Verify merkle proof if root is stored
+      const attestationWithRoot = attestation as AttestationRecord & { merkleRoot?: string };
+      if (attestationWithRoot.merkleRoot) {
+        const isProofValid = this.verifyMerkleProof(
+          legProof.leafHash,
+          legProof.merkleProof,
+          attestationWithRoot.merkleRoot
+        );
+        if (!isProofValid) {
+          errors.push('Merkle proof verification failed');
+        }
+      }
+
+      return {
+        valid: errors.length === 0,
+        errors,
+        proof: legProof,
+      };
+    } catch (error) {
+      return {
+        valid: false,
+        errors: [`Verification error: ${error instanceof Error ? error.message : 'Unknown'}`],
+      };
+    }
+  }
+
+  /**
+   * Verify a Merkle proof
+   */
+  private verifyMerkleProof(leafHash: string, proof: string[], root: string): boolean {
+    let currentHash = leafHash;
+
+    for (const siblingHash of proof) {
+      // Determine order (smaller hash first for consistency)
+      const left = currentHash < siblingHash ? currentHash : siblingHash;
+      const right = currentHash < siblingHash ? siblingHash : currentHash;
+      currentHash = crypto.createHash('sha256').update(left + right).digest('hex');
+    }
+
+    return currentHash === root;
+  }
+
+  /**
    * Build attestation summary for API response
    */
   buildAttestationSummary(attestation: AttestationRecord): {

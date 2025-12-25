@@ -128,11 +128,18 @@ export interface PaymentRecord {
 export type QuoteMode = 'ExactOut' | 'ExactIn';
 
 /**
+ * Fallback reason codes
+ */
+export type FallbackReason = 'UNSUPPORTED_EXACT_OUT' | 'INSUFFICIENT_LIQUIDITY' | 'RATE_LIMITED';
+
+/**
  * Extended payment quote with fallback info
  */
 export interface ExtendedPaymentQuote extends PaymentQuote {
   /** Quote mode used */
   mode: QuoteMode;
+  /** Reason for fallback to ExactIn (if applicable) */
+  fallbackReason?: FallbackReason;
   /** If ExactIn, the refund amount to merchant */
   refundAmount?: string;
   /** Risk assessment */
@@ -309,7 +316,10 @@ export class PaymentService {
         ttlMs: this.QUOTE_TTL_MS,
       };
     } catch (exactOutError) {
-      this.log.warn({ error: exactOutError }, 'ExactOut quote failed, trying ExactIn fallback');
+      this.log.warn(
+        { error: exactOutError, errorCode: 'UNSUPPORTED_EXACT_OUT' },
+        'ExactOut quote failed, trying ExactIn fallback'
+      );
     }
 
     // Fallback: ExactIn mode with refund
@@ -333,7 +343,10 @@ export class PaymentService {
     const refundAmount =
       outputAmount > requiredAmount ? (outputAmount - requiredAmount).toString() : '0';
 
-    const warnings: string[] = ['Using ExactIn mode with potential refund'];
+    const warnings: string[] = [
+      'Using ExactIn mode with potential refund',
+      'Code: UNSUPPORTED_EXACT_OUT - ExactOut not available for this pair',
+    ];
     if (refundAmount !== '0') {
       warnings.push(`Refund of ~${refundAmount} ${settleMint.slice(0, 8)}... will be returned`);
     }
@@ -351,6 +364,7 @@ export class PaymentService {
         labels: exactInQuote.routePlan.map(step => step.swapInfo.label),
       },
       mode: 'ExactIn',
+      fallbackReason: 'UNSUPPORTED_EXACT_OUT',
       refundAmount,
       risk: {
         priceImpactBps,

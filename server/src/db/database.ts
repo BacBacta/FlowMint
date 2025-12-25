@@ -2294,14 +2294,41 @@ export class DatabaseService {
     this.saveToFile();
   }
 
-  async getInvoicesByMerchant(merchantId: string, status?: string): Promise<InvoiceRecord[]> {
+  async getInvoicesByMerchant(
+    merchantId: string,
+    options?: {
+      status?: string;
+      fromDate?: number;
+      toDate?: number;
+      limit?: number;
+      offset?: number;
+    }
+  ): Promise<InvoiceRecord[]> {
     if (!this.db) throw new Error('Database not initialized');
 
-    const query = status
-      ? `SELECT * FROM invoices WHERE merchant_id = ? AND status = ? ORDER BY created_at DESC`
-      : `SELECT * FROM invoices WHERE merchant_id = ? ORDER BY created_at DESC`;
+    const conditions = ['merchant_id = ?'];
+    const params: any[] = [merchantId];
 
-    const params = status ? [merchantId, status] : [merchantId];
+    if (options?.status) {
+      conditions.push('status = ?');
+      params.push(options.status);
+    }
+
+    if (options?.fromDate) {
+      conditions.push('created_at >= ?');
+      params.push(options.fromDate);
+    }
+
+    if (options?.toDate) {
+      conditions.push('created_at <= ?');
+      params.push(options.toDate);
+    }
+
+    const limit = options?.limit || 100;
+    const offset = options?.offset || 0;
+
+    const query = `SELECT * FROM invoices WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`;
+
     const result = this.db.exec(query, params);
 
     if (result.length === 0) return [];
