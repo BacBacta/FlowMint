@@ -1,8 +1,7 @@
 name: Deploy
 
 on:
-  push:
-    branches: [main]
+  # Deploy only on manual trigger - secrets must be configured first
   workflow_dispatch:
     inputs:
       environment:
