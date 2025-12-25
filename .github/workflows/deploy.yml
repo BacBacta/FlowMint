@@ -73,14 +73,18 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: ./server
+          file: ./server/Dockerfile
           push: true
           tags: |
-            flowmint/server:${{ github.sha }}
-            flowmint/server:${{ github.event.inputs.environment || 'staging' }}
+            ${{ secrets.DOCKER_USERNAME }}/flowmint-server:${{ github.sha }}
+            ${{ secrets.DOCKER_USERNAME }}/flowmint-server:latest
 
       # Add deployment steps for your infrastructure (e.g., Railway, Fly.io, AWS, etc.)
       # - name: Deploy to Railway
