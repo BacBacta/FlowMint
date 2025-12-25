@@ -14,7 +14,8 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # Copy server package.json
 COPY server/package.json ./server/
 
-# Install dependencies
+# Install dependencies (disable husky hooks)
+ENV HUSKY=0
 RUN pnpm install --frozen-lockfile --filter server
 
 # Copy server source code
@@ -45,7 +46,8 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # Copy server package.json
 COPY server/package.json ./server/
 
-# Install production dependencies only
+# Install production dependencies only (disable husky hooks)
+ENV HUSKY=0
 RUN pnpm install --frozen-lockfile --prod --filter server
 
 WORKDIR /app/server
