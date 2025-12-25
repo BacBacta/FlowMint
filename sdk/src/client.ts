@@ -4,6 +4,7 @@
  * Main client class for interacting with the FlowMint API
  */
 
+import { ApiError, NetworkError, RateLimitError } from './errors';
 import {
   type QuoteRequest,
   type QuoteResponse,
@@ -19,7 +20,6 @@ import {
   type HealthResponse,
   type Token,
 } from './types';
-import { FlowMintError, ApiError, NetworkError, RateLimitError } from './errors';
 
 export interface FlowMintClientConfig {
   /** Base URL of the FlowMint API */
@@ -58,11 +58,7 @@ export class FlowMintClient {
   // Private methods
   // =========================================================================
 
-  private async request<T>(
-    endpoint: string,
-    options: RequestInit = {},
-    attempt = 1,
-  ): Promise<T> {
+  private async request<T>(endpoint: string, options: RequestInit = {}, attempt = 1): Promise<T> {
     const url = `${this.config.apiUrl}${endpoint}`;
 
     const headers: Record<string, string> = {
@@ -120,13 +116,14 @@ export class FlowMintClient {
       // Handle network errors with retry
       if (error instanceof NetworkError && attempt < this.config.retries) {
         const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
-        await new Promise((resolve) => setTimeout(resolve, delay));
+        await new Promise(resolve => setTimeout(resolve, delay));
         return this.request<T>(endpoint, options, attempt + 1);
       }
 
       // Handle rate limiting with retry
       if (error instanceof RateLimitError && error.retryAfter && attempt < this.config.retries) {
-        await new Promise((resolve) => setTimeout(resolve, error.retryAfter! * 1000));
+        const retryMs = (error.retryAfter as number) * 1000;
+        await new Promise(resolve => setTimeout(resolve, retryMs));
         return this.request<T>(endpoint, options, attempt + 1);
       }
 
@@ -251,7 +248,7 @@ export class FlowMintClient {
   async executePayment(
     paymentId: string,
     payerPublicKey: string,
-    payerMint: string,
+    payerMint: string
   ): Promise<SwapResponse> {
     return this.request<SwapResponse>(`/api/payment/${paymentId}/execute`, {
       method: 'POST',

@@ -11,7 +11,7 @@ export class FlowMintError extends Error {
     message: string,
     code: string,
     statusCode?: number,
-    details?: Record<string, unknown>,
+    details?: Record<string, unknown>
   ) {
     super(message);
     this.name = 'FlowMintError';
@@ -105,7 +105,7 @@ export class RateLimitError extends FlowMintError {
       `Rate limit exceeded${retryAfter ? `. Retry after ${retryAfter} seconds` : ''}`,
       'RATE_LIMIT_ERROR',
       429,
-      { retryAfter },
+      { retryAfter }
     );
     this.name = 'RateLimitError';
     this.retryAfter = retryAfter;
