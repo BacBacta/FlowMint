@@ -5,8 +5,7 @@ node_modules/
 # Build output (we copy from builder stage)
 dist/
 
-# Source files (not needed in production)
-src/
+# Test files (not needed in production)
 tests/
 
 # Development files
@@ -14,7 +13,6 @@ tests/
 .eslintrc*
 .prettier*
 jest.config.*
-tsconfig.json
 
 # Git
 .git/
