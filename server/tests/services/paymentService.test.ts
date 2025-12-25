@@ -4,7 +4,29 @@
  * Tests for payment processing with FlowMint integration.
  */
 
-import { PublicKey, Keypair } from '@solana/web3.js';
+import { Keypair, PublicKey } from '@solana/web3.js';
+
+import { PaymentService } from '../../src/services/paymentService';
+
+jest.mock('../../src/utils/logger', () => ({
+  logger: {
+    child: () => ({
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+      debug: jest.fn(),
+    }),
+  },
+}));
+
+jest.mock('../../src/services/jupiterService', () => ({
+  jupiterService: {
+    quoteSwap: jest.fn(),
+  },
+}));
+
+import { jupiterService } from '../../src/services/jupiterService';
+import { DatabaseService } from '../../src/db/database';
 
 describe('PaymentService', () => {
   // Test keypairs
@@ -104,6 +126,53 @@ describe('PaymentService', () => {
 
       expect(quote.route.steps).toEqual(1);
       expect(quote.expiresAt).toBeGreaterThan(Date.now());
+    });
+  });
+
+  describe('ExactOut fallback (UNSUPPORTED_EXACT_OUT)', () => {
+    it('should fallback to ExactIn with refundAmount and fallbackReason', async () => {
+      const db = new DatabaseService(':memory:');
+      await db.initialize();
+      const service = new PaymentService(db);
+
+      const quoteSwapMock = jupiterService.quoteSwap as unknown as jest.Mock;
+      quoteSwapMock.mockReset();
+
+      const payerPublicKey = payer.publicKey.toBase58();
+      const amountOut = '1000000';
+
+      // 1) ExactOut fails
+      quoteSwapMock.mockRejectedValueOnce(new Error('ExactOut not supported'));
+
+      // 2) estimateInputAmount() rough ExactIn quote
+      quoteSwapMock.mockResolvedValueOnce({
+        inAmount: '1000000',
+        outAmount: '500000',
+        priceImpactPct: '0.01',
+        routePlan: [{ swapInfo: { label: 'Orca' } }],
+      });
+
+      // 3) ExactIn fallback quote (outAmount > required -> refund)
+      quoteSwapMock.mockResolvedValueOnce({
+        inAmount: '2100000',
+        outAmount: '1100000',
+        priceImpactPct: '0.02',
+        routePlan: [{ swapInfo: { label: 'Orca' } }],
+      });
+
+      const quote = await service.getExtendedQuote(
+        payerPublicKey,
+        SOL_MINT,
+        USDC_MINT,
+        amountOut
+      );
+
+      expect(quote.mode).toBe('ExactIn');
+      expect(quote.fallbackReason).toBe('UNSUPPORTED_EXACT_OUT');
+      expect(BigInt(quote.refundAmount || '0')).toBeGreaterThan(0n);
+      expect(quote.risk.warnings.join(' ')).toMatch(/UNSUPPORTED_EXACT_OUT/);
+
+      await db.close();
     });
   });
 
