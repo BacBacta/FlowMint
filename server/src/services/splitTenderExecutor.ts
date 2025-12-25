@@ -5,7 +5,8 @@
  * Handles retries, failures, refunds, and completion.
  */
 
-import { Connection, PublicKey, VersionedTransaction } from '@solana/web3.js';
+import { Connection, PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
+import { createTransferInstruction, getAssociatedTokenAddressSync } from '@solana/spl-token';
 
 import { DatabaseService, InvoiceReservationRecord, PaymentLegRecord } from '../db/database';
 import { logger } from '../utils/logger';
@@ -228,10 +229,6 @@ export class SplitTenderExecutor {
 
     // For direct transfer, the payer sends stablecoin directly to merchant
     // Build SPL token transfer instruction
-    const { getAssociatedTokenAddressSync, createTransferInstruction } = await import(
-      '@solana/spl-token'
-    );
-    const { Transaction, SystemProgram } = await import('@solana/web3.js');
 
     const payerPubkey = new PublicKey(payerPublicKey);
     const mintPubkey = new PublicKey(leg.payMint);

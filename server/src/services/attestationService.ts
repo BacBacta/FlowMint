@@ -16,7 +16,7 @@ import { DatabaseService, AttestationRecord, PolicyRecord, InvoiceRecord } from 
 
 // Attestation payload structure
 export interface AttestationPayload {
-  version: '1.0';
+  version: '1.0' | '2.0';
   invoiceId: string;
   policyHash: string;
   timestamp: number;
@@ -292,18 +292,19 @@ export class AttestationService {
         errors.push('Invalid signature');
       }
 
-      // Parse and validate payload structure
-      const payload: AttestationPayload = JSON.parse(attestation.payloadJson);
+      // Parse and validate payload structure (supports v1 + v2)
+      const payload: any = JSON.parse(attestation.payloadJson);
 
-      if (payload.version !== '1.0') {
-        errors.push(`Unsupported attestation version: ${payload.version}`);
+      const version = payload?.version as string | undefined;
+      if (version !== '1.0' && version !== '2.0') {
+        errors.push(`Unsupported attestation version: ${version ?? 'unknown'}`);
       }
 
-      if (payload.invoiceId !== attestation.invoiceId) {
+      if (payload?.invoiceId && payload.invoiceId !== attestation.invoiceId) {
         errors.push('Invoice ID mismatch');
       }
 
-      if (payload.policyHash !== attestation.policyHash) {
+      if (payload?.policyHash && payload.policyHash !== attestation.policyHash) {
         errors.push('Policy hash mismatch');
       }
 

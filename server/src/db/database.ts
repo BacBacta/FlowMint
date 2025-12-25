@@ -206,6 +206,13 @@ export interface AttestationRecord {
   payloadJson: string;
   plannedJson: string;
   actualJson: string;
+  // V2: per-leg proof persistence (optional)
+  merkleRoot?: string;
+  legProofs?: Array<{
+    legIndex: number;
+    merkleProof: string[];
+    leafHash: string;
+  }>;
   signerPubkey: string;
   signature: string;
   verificationUrl?: string;
@@ -336,7 +343,49 @@ export class DatabaseService {
     }
 
     this.createTables();
+    this.upgradeSchema();
     this.log.info('Database initialized');
+  }
+
+  private upgradeSchema(): void {
+    if (!this.db) throw new Error('Database not initialized');
+
+    // Schema upgrades (additive, safe)
+    this.ensureColumnExists('attestations', 'merkle_root', 'TEXT');
+    this.ensureColumnExists('attestations', 'leg_proofs_json', 'TEXT');
+  }
+
+  private ensureColumnExists(table: string, column: string, type: string): void {
+    if (!this.db) throw new Error('Database not initialized');
+
+    try {
+      const columns = this.getTableColumns(table);
+      if (columns.has(column)) return;
+
+      this.db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+      this.saveToFile();
+      this.log.info({ table, column, type }, 'Database schema upgraded: added column');
+    } catch (error) {
+      // If ALTER TABLE fails for any reason, keep running (best-effort upgrade)
+      this.log.warn({ table, column, error }, 'Failed to upgrade schema column');
+    }
+  }
+
+  private getTableColumns(table: string): Set<string> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = this.db.exec(`PRAGMA table_info(${table})`);
+    const cols = new Set<string>();
+    if (result.length === 0) return cols;
+
+    const nameIdx = result[0].columns.indexOf('name');
+    if (nameIdx === -1) return cols;
+
+    for (const row of result[0].values) {
+      const name = row[nameIdx];
+      if (typeof name === 'string') cols.add(name);
+    }
+    return cols;
   }
 
   /**
@@ -711,6 +760,8 @@ export class DatabaseService {
         signer_pubkey TEXT NOT NULL,
         signature TEXT NOT NULL,
         verification_url TEXT,
+        merkle_root TEXT,
+        leg_proofs_json TEXT,
         created_at INTEGER NOT NULL,
         FOREIGN KEY (invoice_id) REFERENCES invoices(id)
       )
@@ -2469,8 +2520,8 @@ export class DatabaseService {
     if (!this.db) throw new Error('Database not initialized');
 
     this.db.run(
-      `INSERT INTO attestations (id, invoice_id, policy_hash, payload_json, planned_json, actual_json, signer_pubkey, signature, verification_url, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO attestations (id, invoice_id, policy_hash, payload_json, planned_json, actual_json, signer_pubkey, signature, verification_url, merkle_root, leg_proofs_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         attestation.id,
         attestation.invoiceId,
@@ -2481,6 +2532,8 @@ export class DatabaseService {
         attestation.signerPubkey,
         attestation.signature,
         attestation.verificationUrl || null,
+        attestation.merkleRoot || null,
+        attestation.legProofs ? JSON.stringify(attestation.legProofs) : null,
         attestation.createdAt,
       ]
     );
@@ -2511,6 +2564,18 @@ export class DatabaseService {
   }
 
   private mapAttestationRow(row: Record<string, any>): AttestationRecord {
+    let legProofs: AttestationRecord['legProofs'] | undefined;
+    if (row.leg_proofs_json) {
+      try {
+        const parsed = JSON.parse(row.leg_proofs_json);
+        if (Array.isArray(parsed)) {
+          legProofs = parsed;
+        }
+      } catch {
+        // ignore malformed legacy data
+      }
+    }
+
     return {
       id: row.id,
       invoiceId: row.invoice_id,
@@ -2518,6 +2583,8 @@ export class DatabaseService {
       payloadJson: row.payload_json,
       plannedJson: row.planned_json,
       actualJson: row.actual_json,
+      merkleRoot: row.merkle_root || undefined,
+      legProofs,
       signerPubkey: row.signer_pubkey,
       signature: row.signature,
       verificationUrl: row.verification_url || undefined,

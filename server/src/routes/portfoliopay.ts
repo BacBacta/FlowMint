@@ -7,18 +7,40 @@
 import * as crypto from 'crypto';
 
 import { Keypair, Connection } from '@solana/web3.js';
+import bs58 from 'bs58';
 import { Router, Request, Response } from 'express';
+import nacl from 'tweetnacl';
 import { v4 as uuidv4 } from 'uuid';
 
 import { config } from '../config/index.js';
 import { DatabaseService } from '../db/database.js';
 import { AttestationService } from '../services/attestationService.js';
+import { computeMerkleProofSorted, computeMerkleRootSorted } from '../services/merkle.js';
 import { InvoiceService, CreateInvoiceParams } from '../services/invoiceService.js';
 import { PaymentService, ExtendedPaymentQuote } from '../services/paymentService.js';
 import { RelayerService } from '../services/relayerService.js';
+import { createSplitTenderExecutor } from '../services/splitTenderExecutor.js';
+import { createSplitTenderPlanner } from '../services/splitTenderPlanner.js';
 import { logger } from '../utils/logger.js';
 
 const log = logger.child({ module: 'portfoliopay-routes' });
+
+function computeSplitTenderLeafHash(params: {
+  legIndex: number;
+  payMint: string;
+  amountIn: string;
+  actualUsdcOut: string;
+  txSignature: string;
+}): string {
+  const data = [
+    params.legIndex.toString(),
+    params.payMint,
+    params.amountIn,
+    params.actualUsdcOut,
+    params.txSignature,
+  ].join(':');
+  return crypto.createHash('sha256').update(data).digest('hex');
+}
 
 // Initialize services
 let db: DatabaseService;
@@ -640,8 +662,6 @@ export function createPortfolioPayRouter(): Router {
         policy = await db.getPolicy(invoice.policyId);
       }
 
-      // Get planner (lazy init)
-      const { createSplitTenderPlanner } = await import('../services/splitTenderPlanner.js');
       const connection = new Connection(config.solana.rpcUrl, config.solana.commitment);
       const planner = createSplitTenderPlanner(connection, db);
 
@@ -770,7 +790,6 @@ export function createPortfolioPayRouter(): Router {
       }
 
       // Execute leg
-      const { createSplitTenderExecutor } = await import('../services/splitTenderExecutor.js');
       const connection = new Connection(config.solana.rpcUrl, config.solana.commitment);
       const executor = createSplitTenderExecutor(connection, db);
 
@@ -793,6 +812,93 @@ export function createPortfolioPayRouter(): Router {
 
         // Check if all legs complete
         const progress = await executor.getProgress(reservationId);
+
+        // If this was the last leg, finalize invoice + create/persist attestation kit (best-effort)
+        if (progress && progress.completedLegs >= progress.totalLegs) {
+          try {
+            await invoiceService.markPaid({
+              invoiceId: reservation.invoiceId,
+              txSignature: result.txSignature || `split_tender_${reservationId}`,
+            });
+
+            const existing = await db.getAttestationByInvoice(reservation.invoiceId);
+            if (!existing) {
+              const invoice = await db.getInvoice(reservation.invoiceId);
+              const policy = invoice?.policyId ? await db.getPolicy(invoice.policyId) : undefined;
+              const policyHash = policy ? attestationService.hashPolicy(policy) : 'no_policy';
+
+              const legs = (await db.getLegsByReservation(reservationId))
+                .slice()
+                .sort((a, b) => a.legIndex - b.legIndex);
+
+              const leafHashes = legs.map((l) =>
+                computeSplitTenderLeafHash({
+                  legIndex: l.legIndex,
+                  payMint: l.payMint,
+                  amountIn: l.amountIn,
+                  actualUsdcOut: l.actualUsdcOut || l.expectedUsdcOut,
+                  txSignature: l.txSignature || '',
+                })
+              );
+
+              const merkleRoot = computeMerkleRootSorted(leafHashes);
+              const legProofs = legs.map((l, idx) => ({
+                legIndex: l.legIndex,
+                leafHash: leafHashes[idx],
+                merkleProof: computeMerkleProofSorted(leafHashes, idx),
+              }));
+
+              const attestationId = uuidv4();
+              const baseUrl = process.env.BASE_URL || 'https://flowmint-server.fly.dev';
+              const verificationUrl = `${baseUrl}/api/v1/attestations/${attestationId}/verify`;
+
+              const payload = {
+                version: '2.0',
+                invoiceId: reservation.invoiceId,
+                policyHash,
+                timestamp: Date.now(),
+                reservationId,
+                merkleRoot,
+                legs: legs.map((l, idx) => ({
+                  legIndex: l.legIndex,
+                  payMint: l.payMint,
+                  amountIn: l.amountIn,
+                  expectedUsdcOut: l.expectedUsdcOut,
+                  actualUsdcOut: l.actualUsdcOut || l.expectedUsdcOut,
+                  txSignature: l.txSignature,
+                  leafHash: leafHashes[idx],
+                })),
+              };
+
+              const payloadJson = JSON.stringify(payload);
+              const payloadBytes = new TextEncoder().encode(payloadJson);
+              const signature = nacl.sign.detached(payloadBytes, signerKeypair.secretKey);
+              const signatureBase58 = bs58.encode(signature);
+
+              await db.saveAttestation({
+                id: attestationId,
+                invoiceId: reservation.invoiceId,
+                policyHash,
+                payloadJson,
+                plannedJson: reservation.planJson,
+                actualJson: JSON.stringify({ legs }),
+                merkleRoot,
+                legProofs,
+                signerPubkey: signerKeypair.publicKey.toBase58(),
+                signature: signatureBase58,
+                verificationUrl,
+                createdAt: Date.now(),
+              });
+
+              log.info(
+                { invoiceId: reservation.invoiceId, attestationId, merkleRoot },
+                'Split-tender attestation persisted'
+              );
+            }
+          } catch (error) {
+            log.warn({ error, reservationId }, 'Failed to finalize split-tender attestation');
+          }
+        }
 
         res.json({
           success: true,
@@ -1223,6 +1329,57 @@ export function createPortfolioPayRouter(): Router {
     } catch (error) {
       log.error({ error }, 'Failed to get invoice attestation');
       res.status(500).json({ error: 'Failed to get invoice attestation' });
+    }
+  });
+
+  /**
+   * GET /api/v1/invoices/:id/attestation/kit
+   * Download an attestation verification kit (JSON)
+   */
+  router.get('/invoices/:id/attestation/kit', async (req: Request, res: Response) => {
+    try {
+      const attestation = await attestationService.getAttestationByInvoice(req.params.id);
+
+      if (!attestation) {
+        return res.status(404).json({ error: 'Attestation not found for invoice' });
+      }
+
+      const kit = {
+        attestation: attestationService.buildAttestationSummary(attestation),
+        merkleRoot: (attestation as any).merkleRoot,
+        legProofs: (attestation as any).legProofs,
+        payload: (() => {
+          try {
+            return JSON.parse(attestation.payloadJson);
+          } catch {
+            return attestation.payloadJson;
+          }
+        })(),
+        planned: (() => {
+          try {
+            return JSON.parse(attestation.plannedJson);
+          } catch {
+            return attestation.plannedJson;
+          }
+        })(),
+        actual: (() => {
+          try {
+            return JSON.parse(attestation.actualJson);
+          } catch {
+            return attestation.actualJson;
+          }
+        })(),
+      };
+
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="attestation-kit-${req.params.id}.json"`
+      );
+      res.send(JSON.stringify(kit, null, 2));
+    } catch (error) {
+      log.error({ error }, 'Failed to download attestation kit');
+      res.status(500).json({ error: 'Failed to download attestation kit' });
     }
   });
 
