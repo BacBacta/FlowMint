@@ -3,6 +3,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 
+import { apiClient } from '@/lib/api';
+
 export interface ExecutionEvent {
   id: number;
   receiptId: string;
@@ -90,13 +92,7 @@ export function ExecutionTimeline({ receiptId, isOpen, onClose }: ExecutionTimel
   const { data, isLoading, error } = useQuery({
     queryKey: ['timeline', receiptId],
     queryFn: async (): Promise<ExecutionEvent[]> => {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || '';
-      const resp = await fetch(`${apiUrl}/api/v1/swap/receipt/${receiptId}/timeline`);
-      if (!resp.ok) {
-        throw new Error(`Failed to fetch timeline: ${resp.status}`);
-      }
-      const payload = await resp.json();
-      return payload.data?.events || [];
+      return apiClient.getSwapReceiptTimeline(receiptId);
     },
     enabled: isOpen && !!receiptId,
     staleTime: 30000,

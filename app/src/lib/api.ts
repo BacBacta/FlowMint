@@ -104,6 +104,31 @@ export interface PaymentLinkResponse {
   expiresAt: string;
 }
 
+export interface SwapExecutionEvent {
+  id: number;
+  receiptId: string;
+  eventType:
+    | 'quote'
+    | 'requote'
+    | 'flowmint_inject'
+    | 'tx_build'
+    | 'tx_send'
+    | 'tx_confirm'
+    | 'retry'
+    | 'success'
+    | 'failure';
+  timestamp: number;
+  rpcEndpoint?: string;
+  priorityFee?: number;
+  slippageBps?: number;
+  signature?: string;
+  status?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  metadata?: Record<string, unknown>;
+  createdAt: number;
+}
+
 // API Client
 class ApiClient {
   private baseUrl: string;
@@ -180,6 +205,13 @@ class ApiClient {
 
   async getSwapReceipts(userPublicKey: string): Promise<any[]> {
     return this.request(`${API_PREFIX}/swap/receipts/${userPublicKey}`);
+  }
+
+  async getSwapReceiptTimeline(receiptId: string): Promise<SwapExecutionEvent[]> {
+    const result = await this.request<{ receiptId: string; events: SwapExecutionEvent[] }>(
+      `${API_PREFIX}/swap/receipt/${encodeURIComponent(receiptId)}/timeline`
+    );
+    return result.events || [];
   }
 
   // Intent endpoints (backend uses /intents, not /intent)
