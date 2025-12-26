@@ -1,12 +1,10 @@
 /**
- * Swap Quote API Route
+ * Swap Quote API Route (Proxy)
  *
- * Proxies quote requests to Jupiter API
+ * Proxies quote requests to the FlowMint backend server.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-
-const JUPITER_API_URL = process.env.JUPITER_API_URL || 'https://quote-api.jup.ag/v6';
 
 // CORS headers
 const corsHeaders = {
@@ -20,6 +18,14 @@ export async function OPTIONS() {
 }
 
 export async function GET(request: NextRequest) {
+  const backend = process.env.NEXT_PUBLIC_API_URL;
+  if (!backend) {
+    return NextResponse.json(
+      { error: 'Backend server not configured. Set NEXT_PUBLIC_API_URL.' },
+      { status: 503, headers: corsHeaders }
+    );
+  }
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const inputMint = searchParams.get('inputMint');
@@ -34,35 +40,28 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Build Jupiter quote URL
-    const jupiterUrl = new URL(`${JUPITER_API_URL}/quote`);
-    jupiterUrl.searchParams.set('inputMint', inputMint);
-    jupiterUrl.searchParams.set('outputMint', outputMint);
-    jupiterUrl.searchParams.set('amount', amount);
-    jupiterUrl.searchParams.set('slippageBps', slippageBps);
+    // Proxy to backend
+    const backendUrl = new URL(`${backend}/api/v1/swap/quote`);
+    backendUrl.searchParams.set('inputMint', inputMint);
+    backendUrl.searchParams.set('outputMint', outputMint);
+    backendUrl.searchParams.set('amount', amount);
+    backendUrl.searchParams.set('slippageBps', slippageBps);
 
-    // Fetch from Jupiter
-    const response = await fetch(jupiterUrl.toString(), {
-      headers: {
-        Accept: 'application/json',
-      },
+    const response = await fetch(backendUrl.toString(), {
+      headers: { Accept: 'application/json' },
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      return NextResponse.json(
-        { error: `Jupiter API error: ${errorText}` },
-        { status: response.status, headers: corsHeaders }
-      );
-    }
+    const payload = await response.json().catch(() => ({ error: 'Invalid backend response' }));
 
-    const data = await response.json();
-    return NextResponse.json(data, { headers: corsHeaders });
+    return NextResponse.json(payload, {
+      status: response.status,
+      headers: corsHeaders,
+    });
   } catch (error) {
-    console.error('Quote error:', error);
+    console.error('Quote proxy error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Internal server error' },
-      { status: 500, headers: corsHeaders }
+      { error: error instanceof Error ? error.message : 'Proxy error' },
+      { status: 502, headers: corsHeaders }
     );
   }
 }
