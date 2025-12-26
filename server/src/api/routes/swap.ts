@@ -335,7 +335,12 @@ export function createSwapRoutes(db: DatabaseService): Router {
       log.info({ mint }, 'Token not found in Jupiter, trying DexScreener');
       const dexRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mint}`);
       if (dexRes.ok) {
-        const dexData = await dexRes.json();
+        const dexData = (await dexRes.json()) as {
+          pairs?: Array<{
+            baseToken?: { address: string; symbol: string; name: string };
+            info?: { imageUrl?: string };
+          }>;
+        };
         const pair = dexData?.pairs?.[0];
         if (pair) {
           const baseToken = pair.baseToken;
