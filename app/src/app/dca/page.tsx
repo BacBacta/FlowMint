@@ -6,13 +6,14 @@ import { useState } from 'react';
 
 import { Footer } from '@/components/Footer';
 import { Header } from '@/components/Header';
-import { apiClient } from '@/lib/api';
+import { TokenSelector, type Token } from '@/components/swap/TokenSelector';
+import { apiClient, type TokenInfo } from '@/lib/api';
 
-// Common tokens
-const POPULAR_TOKENS = [
-  { symbol: 'SOL', mint: 'So11111111111111111111111111111111111111112', decimals: 9 },
-  { symbol: 'USDC', mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', decimals: 6 },
-  { symbol: 'USDT', mint: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', decimals: 6 },
+// Common tokens (with logoURI for TokenSelector compatibility)
+const POPULAR_TOKENS: Token[] = [
+  { symbol: 'SOL', mint: 'So11111111111111111111111111111111111111112', decimals: 9, logoURI: '' },
+  { symbol: 'USDC', mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', decimals: 6, logoURI: '' },
+  { symbol: 'USDT', mint: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', decimals: 6, logoURI: '' },
 ];
 
 // DCA intervals
@@ -28,11 +29,28 @@ export default function DCAPage() {
   const { publicKey, connected } = useWallet();
   const queryClient = useQueryClient();
 
-  const [inputToken, setInputToken] = useState(POPULAR_TOKENS[1]); // USDC
-  const [outputToken, setOutputToken] = useState(POPULAR_TOKENS[0]); // SOL
+  const [customTokens, setCustomTokens] = useState<Token[]>(POPULAR_TOKENS);
+  const [inputToken, setInputToken] = useState<Token>(POPULAR_TOKENS[1]); // USDC
+  const [outputToken, setOutputToken] = useState<Token>(POPULAR_TOKENS[0]); // SOL
   const [totalAmount, setTotalAmount] = useState('');
   const [numberOfOrders, setNumberOfOrders] = useState(10);
   const [interval, setInterval] = useState(INTERVALS[3].value); // Daily
+
+  // Resolve token by mint (for custom tokens)
+  const resolveTokenByMint = async (mint: string): Promise<Token | null> => {
+    const existing = customTokens.find(t => t.mint === mint);
+    if (existing) return existing;
+
+    const info: TokenInfo = await apiClient.getTokenByMint(mint);
+    const token: Token = {
+      symbol: info.symbol,
+      mint: info.mint,
+      decimals: info.decimals,
+      logoURI: info.logoURI || '',
+    };
+    setCustomTokens(prev => (prev.some(t => t.mint === token.mint) ? prev : [token, ...prev]));
+    return token;
+  };
 
   // Fetch existing DCA intents
   const { data: intents, isLoading: intentsLoading } = useQuery({
@@ -112,39 +130,23 @@ export default function DCAPage() {
                   {/* From Token */}
                   <div>
                     <label className="label mb-2">Spend</label>
-                    <select
-                      value={inputToken.mint}
-                      onChange={e => {
-                        const token = POPULAR_TOKENS.find(t => t.mint === e.target.value);
-                        if (token) setInputToken(token);
-                      }}
-                      className="input w-full"
-                    >
-                      {POPULAR_TOKENS.map(token => (
-                        <option key={token.mint} value={token.mint}>
-                          {token.symbol}
-                        </option>
-                      ))}
-                    </select>
+                    <TokenSelector
+                      selectedToken={inputToken}
+                      onSelectToken={setInputToken}
+                      tokens={customTokens}
+                      resolveTokenByMint={resolveTokenByMint}
+                    />
                   </div>
 
                   {/* To Token */}
                   <div>
                     <label className="label mb-2">To receive</label>
-                    <select
-                      value={outputToken.mint}
-                      onChange={e => {
-                        const token = POPULAR_TOKENS.find(t => t.mint === e.target.value);
-                        if (token) setOutputToken(token);
-                      }}
-                      className="input w-full"
-                    >
-                      {POPULAR_TOKENS.filter(t => t.mint !== inputToken.mint).map(token => (
-                        <option key={token.mint} value={token.mint}>
-                          {token.symbol}
-                        </option>
-                      ))}
-                    </select>
+                    <TokenSelector
+                      selectedToken={outputToken}
+                      onSelectToken={setOutputToken}
+                      tokens={customTokens.filter(t => t.mint !== inputToken.mint)}
+                      resolveTokenByMint={resolveTokenByMint}
+                    />
                   </div>
 
                   {/* Total Amount */}
