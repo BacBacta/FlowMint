@@ -305,5 +305,47 @@ export function createSwapRoutes(db: DatabaseService): Router {
     }
   });
 
+  /**
+   * GET /api/v1/swap/token/:mint
+   *
+   * Resolve token metadata by mint (useful for custom tokens pasted by the user).
+   * Uses the full Jupiter token list (no tags) so it can include non-verified/community tokens.
+   */
+  router.get('/token/:mint', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const mint = z.string().min(32).max(64).parse(req.params.mint);
+
+      const tokens = await jupiterService.getTokenList();
+      const token = tokens.find(t => t.address === mint || (t as any).mint === mint);
+
+      if (!token) {
+        return res.status(404).json({
+          success: false,
+          error: 'Token not found',
+        });
+      }
+
+      // Normalized response
+      res.json({
+        success: true,
+        data: {
+          symbol: token.symbol,
+          mint: (token as any).address ?? (token as any).mint,
+          decimals: token.decimals,
+          logoURI: token.logoURI ?? '',
+        },
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid request parameters',
+          details: error.errors,
+        });
+      }
+      next(error);
+    }
+  });
+
   return router;
 }

@@ -13,7 +13,7 @@ import {
   type RiskReason,
   type ExecutionStep,
 } from '@/components/risk';
-import { apiClient } from '@/lib/api';
+import { apiClient, type TokenInfo } from '@/lib/api';
 
 import { ExecutionProfileSelector, type ExecutionProfile } from './ExecutionProfileSelector';
 import { ReceiptModal } from './ReceiptModal';
@@ -41,6 +41,7 @@ export function SwapForm() {
   const { connection: _connection } = useConnection();
   const queryClient = useQueryClient();
 
+  const [customTokens, setCustomTokens] = useState(POPULAR_TOKENS);
   const [inputToken, setInputToken] = useState(POPULAR_TOKENS[0]);
   const [outputToken, setOutputToken] = useState(POPULAR_TOKENS[1]);
   const [inputAmount, setInputAmount] = useState('');
@@ -166,6 +167,21 @@ export function SwapForm() {
     setInputToken(outputToken);
     setOutputToken(temp);
     setInputAmount('');
+  };
+
+  const resolveTokenByMint = async (mint: string) => {
+    const existing = customTokens.find(t => t.mint === mint);
+    if (existing) return existing;
+
+    const info: TokenInfo = await apiClient.getTokenByMint(mint);
+    const token = {
+      symbol: info.symbol,
+      mint: info.mint,
+      decimals: info.decimals,
+      logoURI: info.logoURI || '',
+    };
+    setCustomTokens(prev => (prev.some(t => t.mint === token.mint) ? prev : [token, ...prev]));
+    return token;
   };
 
   // Calculate output amount
@@ -327,7 +343,8 @@ export function SwapForm() {
           <TokenSelector
             selectedToken={inputToken}
             onSelectToken={setInputToken}
-            tokens={POPULAR_TOKENS}
+            tokens={customTokens}
+            resolveTokenByMint={resolveTokenByMint}
           />
         </div>
       </div>
@@ -364,7 +381,8 @@ export function SwapForm() {
           <TokenSelector
             selectedToken={outputToken}
             onSelectToken={setOutputToken}
-            tokens={POPULAR_TOKENS}
+            tokens={customTokens}
+            resolveTokenByMint={resolveTokenByMint}
           />
         </div>
       </div>

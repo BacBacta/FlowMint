@@ -61,6 +61,13 @@ export interface QuoteRequest {
   slippageBps?: number;
 }
 
+export interface TokenInfo {
+  symbol: string;
+  mint: string;
+  decimals: number;
+  logoURI: string;
+}
+
 export interface IntentRequest {
   userPublicKey: string;
   type: 'dca' | 'stop-loss';
@@ -158,6 +165,10 @@ class ApiClient {
     });
 
     return this.request(`${API_PREFIX}/swap/quote?${queryParams}`);
+  }
+
+  async getTokenByMint(mint: string): Promise<TokenInfo> {
+    return this.request(`${API_PREFIX}/swap/token/${encodeURIComponent(mint)}`);
   }
 
   async executeSwap(params: SwapRequest): Promise<SwapResponse> {
