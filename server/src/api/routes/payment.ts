@@ -30,11 +30,50 @@ const executePaymentSchema = z.object({
   memo: z.string().max(64).optional(),
 });
 
-const createPaymentLinkSchema = z.object({
-  merchantId: z.string().min(32).max(44),
-  orderId: z.string().min(1).max(64),
-  amountUsdc: z.union([z.number().positive(), z.string().min(1)]),
-});
+const createPaymentLinkSchema = z
+  .object({
+    // Historically called merchantId, but it's actually a Solana address (public key).
+    merchantId: z.string().optional(),
+    merchantPublicKey: z.string().optional(),
+    orderId: z.string().min(1).max(64),
+    amountUsdc: z.union([z.number().positive(), z.string().min(1)]),
+  })
+  .superRefine((value, ctx) => {
+    const merchant = value.merchantPublicKey ?? value.merchantId;
+    if (!merchant) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'merchantId is required',
+        path: ['merchantId'],
+      });
+      return;
+    }
+    if (merchant.length < 32) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.too_small,
+        type: 'string',
+        inclusive: true,
+        minimum: 32,
+        message: 'String must contain at least 32 character(s)',
+        path: ['merchantId'],
+      });
+    }
+    if (merchant.length > 44) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.too_big,
+        type: 'string',
+        inclusive: true,
+        maximum: 44,
+        message: 'String must contain at most 44 character(s)',
+        path: ['merchantId'],
+      });
+    }
+  })
+  .transform(value => ({
+    merchantId: (value.merchantPublicKey ?? value.merchantId)!,
+    orderId: value.orderId,
+    amountUsdc: value.amountUsdc,
+  }));
 
 const executePaymentByIdSchema = z.object({
   payerPublicKey: z.string().min(32).max(44),

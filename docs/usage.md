@@ -141,7 +141,7 @@ Accept payments in any token, receive USDC.
 #### Creating a Payment Link
 
 1. Navigate to **Payments**
-2. Enter your Merchant ID
+2. Enter your Merchant Wallet (Solana address / public key)
 3. Enter Order/Invoice ID
 4. Enter amount in USDC
 5. Click **Create Payment Link**

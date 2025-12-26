@@ -88,6 +88,19 @@ function PaymentsContent() {
   const [orderId, setOrderId] = useState('');
   const [amountUsdc, setAmountUsdc] = useState('');
 
+  const merchantIdTrimmed = useMemo(() => merchantId.trim(), [merchantId]);
+  const orderIdTrimmed = useMemo(() => orderId.trim(), [orderId]);
+  const amountUsdcNumber = useMemo(() => Number(amountUsdc), [amountUsdc]);
+
+  const isLikelySolanaAddress = useMemo(() => {
+    // Base58 alphabet without 0, O, I, l
+    return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(merchantIdTrimmed);
+  }, [merchantIdTrimmed]);
+
+  const isAmountUsdcValid = useMemo(() => {
+    return Number.isFinite(amountUsdcNumber) && amountUsdcNumber > 0;
+  }, [amountUsdcNumber]);
+
   // Payment link state
   const [paymentId, setPaymentId] = useState('');
   const [paymentLink, setPaymentLink] = useState<any>(null);
@@ -113,13 +126,23 @@ function PaymentsContent() {
   }, [searchParams]);
 
   const createLinkPayload = useMemo(
-    () => ({ merchantId, orderId, amountUsdc: parseFloat(amountUsdc) }),
-    [merchantId, orderId, amountUsdc]
+    () => ({ merchantId: merchantIdTrimmed, orderId: orderIdTrimmed, amountUsdc: amountUsdcNumber }),
+    [merchantIdTrimmed, orderIdTrimmed, amountUsdcNumber]
   );
 
   // Create payment link mutation
   const createPaymentLink = useMutation({
     mutationFn: async () => {
+      if (!isLikelySolanaAddress) {
+        throw new Error('Merchant wallet address invalide (adresse Solana attendue)');
+      }
+      if (!orderIdTrimmed) {
+        throw new Error('Order ID requis');
+      }
+      if (!isAmountUsdcValid) {
+        throw new Error('Montant USDC invalide');
+      }
+
       const resp = await fetch('/api/payments/create-link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -426,14 +449,19 @@ function PaymentsContent() {
                 <div className="space-y-6">
                   {/* Merchant ID */}
                   <div>
-                    <label className="label mb-2">Merchant ID</label>
+                    <label className="label mb-2">Merchant Wallet (Solana address)</label>
                     <input
                       type="text"
                       value={merchantId}
                       onChange={e => setMerchantId(e.target.value)}
-                      placeholder="your-merchant-id"
+                      placeholder="Base58 Solana public key"
                       className="input w-full"
                     />
+                    {!merchantIdTrimmed ? null : !isLikelySolanaAddress ? (
+                      <p className="text-sm text-red-500 mt-2">
+                        Doit être une adresse Solana valide (base58, ~32–44 caractères).
+                      </p>
+                    ) : null}
                   </div>
 
                   {/* Order ID */}
@@ -460,12 +488,22 @@ function PaymentsContent() {
                       min={0}
                       step="0.01"
                     />
+                    {!amountUsdc ? null : !isAmountUsdcValid ? (
+                      <p className="text-sm text-red-500 mt-2">Le montant doit être strictement positif.</p>
+                    ) : null}
                   </div>
 
                   {/* Submit Button */}
                   <button
                     onClick={() => createPaymentLink.mutate()}
-                    disabled={!merchantId || !orderId || !amountUsdc || createPaymentLink.isPending}
+                    disabled={
+                      !merchantIdTrimmed ||
+                      !isLikelySolanaAddress ||
+                      !orderIdTrimmed ||
+                      !amountUsdc ||
+                      !isAmountUsdcValid ||
+                      createPaymentLink.isPending
+                    }
                     className="btn-primary w-full py-3"
                   >
                     {createPaymentLink.isPending ? 'Creating...' : 'Create Payment Link'}
