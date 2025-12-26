@@ -104,6 +104,11 @@ export default function DCAPage() {
     ? (parseFloat(totalAmount) / numberOfOrders).toFixed(inputToken.decimals)
     : '0';
 
+  const shortenMint = (mint: unknown): string => {
+    if (typeof mint !== 'string' || mint.length < 8) return '—';
+    return `${mint.slice(0, 4)}...`;
+  };
+
   return (
     <div className="flex min-h-screen flex-col">
       <Header />
@@ -266,6 +271,18 @@ export default function DCAPage() {
               ) : (
                 <div className="space-y-4">
                   {intents.map((intent: any) => (
+                    (() => {
+                      const fromMint = intent.tokenFrom ?? intent.inputMint;
+                      const toMint = intent.tokenTo ?? intent.outputMint;
+                      const executed =
+                        intent.executionCount ?? intent.ordersExecuted ?? intent.executedOrders ?? 0;
+                      const total = intent.numberOfSwaps ?? intent.numberOfOrders ?? null;
+                      const progressPct =
+                        typeof total === 'number' && total > 0
+                          ? Math.min(100, Math.max(0, (executed / total) * 100))
+                          : null;
+
+                      return (
                     <div
                       key={intent.id}
                       className="border-surface-200 dark:border-surface-700 rounded-lg border p-4"
@@ -273,10 +290,12 @@ export default function DCAPage() {
                       <div className="flex items-center justify-between">
                         <div>
                           <div className="text-surface-900 font-medium dark:text-white">
-                            {intent.inputMint.slice(0, 4)}... → {intent.outputMint.slice(0, 4)}...
+                            {shortenMint(fromMint)} → {shortenMint(toMint)}
                           </div>
                           <div className="text-surface-500 text-sm">
-                            {intent.ordersExecuted || 0} / {intent.numberOfOrders} orders
+                            {typeof total === 'number' && total > 0
+                              ? `${executed} / ${total} orders`
+                              : `${executed} executed`}
                           </div>
                         </div>
                         <button
@@ -287,15 +306,14 @@ export default function DCAPage() {
                           Cancel
                         </button>
                       </div>
-                      <div className="bg-surface-200 dark:bg-surface-700 mt-2 h-2 overflow-hidden rounded-full">
-                        <div
-                          className="bg-primary-500 h-full"
-                          style={{
-                            width: `${((intent.ordersExecuted || 0) / intent.numberOfOrders) * 100}%`,
-                          }}
-                        />
-                      </div>
+                      {progressPct !== null && (
+                        <div className="bg-surface-200 dark:bg-surface-700 mt-2 h-2 overflow-hidden rounded-full">
+                          <div className="bg-primary-500 h-full" style={{ width: `${progressPct}%` }} />
+                        </div>
+                      )}
                     </div>
+                      );
+                    })()
                   ))}
                 </div>
               )}

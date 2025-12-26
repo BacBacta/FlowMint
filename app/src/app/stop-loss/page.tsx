@@ -256,7 +256,20 @@ export default function StopLossPage() {
               ) : (
                 <div className="space-y-4">
                   {intents.map((intent: any) => {
-                    const token = TOKENS_WITH_FEEDS.find(t => t.mint === intent.inputMint);
+                    const fromMint = intent.tokenFrom ?? intent.inputMint;
+                    const token = TOKENS_WITH_FEEDS.find(t => t.mint === fromMint);
+                    const rawTotal = intent.totalAmount;
+                    const totalAsNumber =
+                      typeof rawTotal === 'number'
+                        ? rawTotal
+                        : typeof rawTotal === 'string'
+                          ? Number(rawTotal)
+                          : NaN;
+                    const amountUi =
+                      Number.isFinite(totalAsNumber) && token
+                        ? totalAsNumber / 10 ** token.decimals
+                        : null;
+                    const trigger = intent.priceThreshold ?? intent.triggerPrice;
                     return (
                       <div
                         key={intent.id}
@@ -271,11 +284,14 @@ export default function StopLossPage() {
                               </span>
                             </div>
                             <div className="text-surface-500 mt-1 text-sm">
-                              Amount: {intent.totalAmount / 10 ** (token?.decimals || 9)}{' '}
-                              {token?.symbol}
+                              Amount:{' '}
+                              {amountUi === null
+                                ? 'N/A'
+                                : amountUi.toLocaleString(undefined, { maximumFractionDigits: 6 })}{' '}
+                              {token?.symbol || ''}
                             </div>
                             <div className="text-surface-500 text-sm">
-                              Trigger: ${intent.triggerPrice?.toFixed(2) || 'N/A'}
+                              Trigger: ${typeof trigger === 'number' ? trigger.toFixed(2) : 'N/A'}
                             </div>
                           </div>
                           <button
