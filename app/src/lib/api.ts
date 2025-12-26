@@ -216,19 +216,43 @@ class ApiClient {
 
   // Intent endpoints (backend uses /intents, not /intent)
   async createIntent(params: IntentRequest): Promise<IntentResponse> {
-    return this.request(`${API_PREFIX}/intents`, {
+    if (params.type === 'dca') {
+      return this.request(`${API_PREFIX}/intents/dca`, {
+        method: 'POST',
+        body: JSON.stringify({
+          userPublicKey: params.userPublicKey,
+          tokenFrom: params.inputMint,
+          tokenTo: params.outputMint,
+          totalAmount: String(Math.floor(params.totalAmount)),
+          numberOfSwaps: params.numberOfOrders,
+          intervalSeconds: params.intervalMs ? Math.floor(params.intervalMs / 1000) : undefined,
+        }),
+      });
+    }
+
+    return this.request(`${API_PREFIX}/intents/stop-loss`, {
       method: 'POST',
-      body: JSON.stringify(params),
+      body: JSON.stringify({
+        userPublicKey: params.userPublicKey,
+        tokenFrom: params.inputMint,
+        tokenTo: params.outputMint,
+        totalAmount: String(Math.floor(params.totalAmount)),
+        priceThreshold: params.triggerPrice,
+        // Default to 'below' as a safe/common stop-loss direction.
+        priceDirection: 'below',
+        priceFeedId: params.pythFeedId,
+      }),
     });
   }
 
   async getIntents(userPublicKey: string): Promise<any[]> {
-    return this.request(`${API_PREFIX}/intents/${userPublicKey}`);
+    return this.request(`${API_PREFIX}/intents/user/${userPublicKey}`);
   }
 
-  async cancelIntent(intentId: string): Promise<{ success: boolean }> {
+  async cancelIntent(intentId: string, userPublicKey: string): Promise<{ success: boolean }> {
     return this.request(`${API_PREFIX}/intents/${intentId}`, {
       method: 'DELETE',
+      body: JSON.stringify({ userPublicKey }),
     });
   }
 

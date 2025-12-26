@@ -16,21 +16,45 @@ export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders });
 }
 
-export async function POST(_request: NextRequest) {
-  return NextResponse.json(
-    {
-      success: false,
-      error: 'Intent creation requires the FlowMint backend server.',
-      hint: 'Run: cd server && npm run dev',
-    },
-    { status: 503, headers: corsHeaders }
-  );
-}
+export async function POST(request: NextRequest) {
+  const backend = process.env.NEXT_PUBLIC_API_URL;
+  if (!backend) {
+    return NextResponse.json(
+      { success: false, error: 'Backend server not configured. Set NEXT_PUBLIC_API_URL.' },
+      { status: 503, headers: corsHeaders }
+    );
+  }
 
-export async function GET(
-  _request: NextRequest,
-  { params: _params }: { params: { userPublicKey: string } }
-) {
-  // Return empty array for user intents
-  return NextResponse.json([], { headers: corsHeaders });
+  try {
+    const body = await request.json();
+    const type = body?.type;
+    const target =
+      type === 'dca'
+        ? `${backend}/api/v1/intents/dca`
+        : type === 'stop-loss'
+          ? `${backend}/api/v1/intents/stop-loss`
+          : null;
+
+    if (!target) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid intent type' },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    const resp = await fetch(target, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    const payload = await resp.json().catch(() => ({ success: false, error: 'Invalid backend response' }));
+    return NextResponse.json(payload, { status: resp.status, headers: corsHeaders });
+  } catch (error) {
+    console.error('Intents proxy error:', error);
+    return NextResponse.json(
+      { success: false, error: error instanceof Error ? error.message : 'Proxy error' },
+      { status: 502, headers: corsHeaders }
+    );
+  }
 }

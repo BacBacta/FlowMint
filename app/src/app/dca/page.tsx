@@ -87,7 +87,8 @@ export default function DCAPage() {
   // Cancel DCA mutation
   const cancelDCA = useMutation({
     mutationFn: async (intentId: string) => {
-      return apiClient.cancelIntent(intentId);
+      if (!publicKey) throw new Error('Wallet not connected');
+      return apiClient.cancelIntent(intentId, publicKey.toBase58());
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['intents'] });

@@ -79,7 +79,8 @@ export default function StopLossPage() {
   // Cancel stop-loss mutation
   const cancelStopLoss = useMutation({
     mutationFn: async (intentId: string) => {
-      return apiClient.cancelIntent(intentId);
+      if (!publicKey) throw new Error('Wallet not connected');
+      return apiClient.cancelIntent(intentId, publicKey.toBase58());
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['intents'] });
