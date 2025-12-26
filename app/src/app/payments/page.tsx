@@ -268,7 +268,7 @@ function PaymentsContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          invoiceId: paymentId,
+          paymentId: paymentId,
           payerPublicKey: publicKey.toBase58(),
           payMints: selectedTokens,
           strategy: 'min-risk',

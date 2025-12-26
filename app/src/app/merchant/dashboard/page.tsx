@@ -19,12 +19,29 @@ type Invoice = {
   txSignature?: string;
 };
 
+type PaymentOrder = {
+  paymentId: string;
+  orderId: string;
+  amountUsdc: string;
+  status: 'pending' | 'completed' | 'expired' | 'failed';
+  createdAt: number;
+  expiresAt: number;
+};
+
 type MerchantStats = {
   totalRevenue: string;
   totalTransactions: number;
   avgTransactionSize: string;
   pendingInvoices: number;
   conversionRate: string;
+};
+
+type OrdersStats = {
+  total: number;
+  pending: number;
+  completed: number;
+  expired: number;
+  totalAmount: string;
 };
 
 type ChartDataPoint = {
@@ -38,6 +55,8 @@ function MerchantDashboardContent() {
   const [merchantId, setMerchantId] = useState(merchantIdParam || '');
   const [period, setPeriod] = useState<'7d' | '30d' | '90d'>('30d');
   const [statusFilter, setStatusFilter] = useState<string>('');
+  const [activeTab, setActiveTab] = useState<'invoices' | 'orders'>('orders');
+  const [ordersStatusFilter, setOrdersStatusFilter] = useState<string>('');
 
   // Fetch merchant stats
   const { data: statsData, isLoading: statsLoading } = useQuery({
@@ -77,6 +96,31 @@ function MerchantDashboardContent() {
         invoices: Invoice[];
         stats: { total: number; paid: number; pending: number; totalRevenue: string };
       }>;
+    },
+    enabled: !!merchantId,
+  });
+
+  // Fetch payment orders (payment links)
+  const { data: ordersData, isLoading: ordersLoading } = useQuery({
+    queryKey: ['merchantOrders', merchantId, ordersStatusFilter],
+    queryFn: async () => {
+      if (!merchantId) return null;
+      const params = new URLSearchParams({ limit: '50' });
+      if (ordersStatusFilter) params.set('status', ordersStatusFilter);
+      const resp = await fetch(
+        `/api/v1/payments/merchant/${encodeURIComponent(merchantId)}/orders?${params}`
+      );
+      if (!resp.ok) {
+        if (resp.status === 404) return null;
+        throw new Error(`HTTP ${resp.status}`);
+      }
+      const data = await resp.json();
+      if (!data.success) return null;
+      return data.data as {
+        orders: PaymentOrder[];
+        stats: OrdersStats;
+        pagination: { total: number; limit: number; offset: number; hasMore: boolean };
+      };
     },
     enabled: !!merchantId,
   });
@@ -256,7 +300,176 @@ function MerchantDashboardContent() {
                 </div>
               )}
 
+              {/* Tab Navigation */}
+              <div className="mb-6 flex border-b border-surface-200 dark:border-surface-700">
+                <button
+                  onClick={() => setActiveTab('orders')}
+                  className={`px-6 py-3 text-sm font-medium transition-colors ${
+                    activeTab === 'orders'
+                      ? 'border-b-2 border-primary-500 text-primary-500'
+                      : 'text-surface-600 hover:text-surface-900 dark:text-surface-400 dark:hover:text-white'
+                  }`}
+                >
+                  Payment Links ({ordersData?.stats.total || 0})
+                </button>
+                <button
+                  onClick={() => setActiveTab('invoices')}
+                  className={`px-6 py-3 text-sm font-medium transition-colors ${
+                    activeTab === 'invoices'
+                      ? 'border-b-2 border-primary-500 text-primary-500'
+                      : 'text-surface-600 hover:text-surface-900 dark:text-surface-400 dark:hover:text-white'
+                  }`}
+                >
+                  Invoices ({invoicesData?.stats.total || 0})
+                </button>
+              </div>
+
+              {/* Orders Stats (show when orders tab is active) */}
+              {activeTab === 'orders' && ordersData?.stats && (
+                <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
+                  <div className="card">
+                    <div className="text-surface-600 dark:text-surface-400 text-sm">Total Orders</div>
+                    <div className="text-surface-900 mt-1 text-2xl font-bold dark:text-white">
+                      {ordersData.stats.total}
+                    </div>
+                  </div>
+                  <div className="card">
+                    <div className="text-surface-600 dark:text-surface-400 text-sm">Completed</div>
+                    <div className="mt-1 text-2xl font-bold text-green-500">
+                      {ordersData.stats.completed}
+                    </div>
+                  </div>
+                  <div className="card">
+                    <div className="text-surface-600 dark:text-surface-400 text-sm">Pending</div>
+                    <div className="mt-1 text-2xl font-bold text-yellow-500">
+                      {ordersData.stats.pending}
+                    </div>
+                  </div>
+                  <div className="card">
+                    <div className="text-surface-600 dark:text-surface-400 text-sm">Revenue</div>
+                    <div className="text-surface-900 mt-1 text-2xl font-bold dark:text-white">
+                      ${ordersData.stats.totalAmount}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Payment Links (Orders) Table */}
+              {activeTab === 'orders' && (
+                <div className="card">
+                  <div className="mb-4 flex items-center justify-between">
+                    <h3 className="text-surface-900 text-lg font-semibold dark:text-white">
+                      Payment Links
+                    </h3>
+                    <select
+                      value={ordersStatusFilter}
+                      onChange={e => setOrdersStatusFilter(e.target.value)}
+                      className="input w-40"
+                    >
+                      <option value="">All Status</option>
+                      <option value="pending">Pending</option>
+                      <option value="completed">Completed</option>
+                      <option value="expired">Expired</option>
+                    </select>
+                  </div>
+
+                  {ordersLoading ? (
+                    <div className="animate-pulse space-y-2">
+                      {[...Array(5)].map((_, i) => (
+                        <div key={i} className="h-12 rounded bg-surface-100 dark:bg-surface-800" />
+                      ))}
+                    </div>
+                  ) : !ordersData?.orders || ordersData.orders.length === 0 ? (
+                    <div className="py-8 text-center text-surface-500">
+                      No payment links found. Create one from the Payments page.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-sm">
+                        <thead>
+                          <tr className="border-b border-surface-200 dark:border-surface-700">
+                            <th className="pb-3 font-medium text-surface-600 dark:text-surface-400">
+                              Order ID
+                            </th>
+                            <th className="pb-3 font-medium text-surface-600 dark:text-surface-400">
+                              Payment ID
+                            </th>
+                            <th className="pb-3 font-medium text-surface-600 dark:text-surface-400">
+                              Amount
+                            </th>
+                            <th className="pb-3 font-medium text-surface-600 dark:text-surface-400">
+                              Status
+                            </th>
+                            <th className="pb-3 font-medium text-surface-600 dark:text-surface-400">
+                              Created
+                            </th>
+                            <th className="pb-3 font-medium text-surface-600 dark:text-surface-400">
+                              Expires
+                            </th>
+                            <th className="pb-3 font-medium text-surface-600 dark:text-surface-400">
+                              Actions
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {ordersData.orders.map(order => (
+                            <tr
+                              key={order.paymentId}
+                              className="border-b border-surface-100 dark:border-surface-800"
+                            >
+                              <td className="py-3 font-medium text-surface-900 dark:text-white">
+                                {order.orderId}
+                              </td>
+                              <td className="py-3 font-mono text-xs text-surface-600 dark:text-surface-400">
+                                {order.paymentId.slice(0, 8)}...
+                              </td>
+                              <td className="py-3 font-medium text-surface-900 dark:text-white">
+                                ${order.amountUsdc}
+                              </td>
+                              <td className="py-3">
+                                <span
+                                  className={`badge ${
+                                    order.status === 'completed'
+                                      ? 'badge-success'
+                                      : order.status === 'pending'
+                                        ? 'badge-warning'
+                                        : 'badge-danger'
+                                  }`}
+                                >
+                                  {order.status}
+                                </span>
+                              </td>
+                              <td className="py-3 text-surface-600 dark:text-surface-400">
+                                {new Date(order.createdAt).toLocaleDateString()}
+                              </td>
+                              <td className="py-3 text-surface-600 dark:text-surface-400">
+                                {order.expiresAt < Date.now() ? (
+                                  <span className="text-red-500">Expired</span>
+                                ) : (
+                                  new Date(order.expiresAt).toLocaleString()
+                                )}
+                              </td>
+                              <td className="py-3">
+                                {order.status === 'pending' && order.expiresAt > Date.now() && (
+                                  <a
+                                    href={`/payments?tab=pay&paymentId=${order.paymentId}`}
+                                    className="text-primary-500 hover:underline"
+                                  >
+                                    Pay Link
+                                  </a>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Invoices Table */}
+              {activeTab === 'invoices' && (
               <div className="card">
                 <div className="mb-4 flex items-center justify-between">
                   <h3 className="text-surface-900 text-lg font-semibold dark:text-white">
@@ -374,6 +587,7 @@ function MerchantDashboardContent() {
                   </div>
                 )}
               </div>
+              )}
             </>
           )}
         </div>

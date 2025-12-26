@@ -607,15 +607,19 @@ export function createPortfolioPayRouter(): Router {
    * POST /api/v1/payments/quote-multi
    * Get a multi-token split payment quote (V1.5)
    * Allows paying with up to 2 tokens combined
+   * Supports both invoiceId (invoice table) and paymentId (payment_links table)
    */
   router.post('/payments/quote-multi', async (req: Request, res: Response) => {
     try {
-      const { invoiceId, payerPublicKey, payMints, maxLegs = 2, strategy = 'min-risk' } = req.body;
+      const { invoiceId, paymentId, payerPublicKey, payMints, maxLegs = 2, strategy = 'min-risk' } = req.body;
+
+      // Accept either invoiceId or paymentId
+      const lookupId = invoiceId || paymentId;
 
       // Validate inputs
-      if (!invoiceId || !payerPublicKey || !Array.isArray(payMints) || payMints.length === 0) {
+      if (!lookupId || !payerPublicKey || !Array.isArray(payMints) || payMints.length === 0) {
         return res.status(400).json({
-          error: 'invoiceId, payerPublicKey, and payMints[] required',
+          error: 'invoiceId (or paymentId), payerPublicKey, and payMints[] required',
         });
       }
 
@@ -631,16 +635,42 @@ export function createPortfolioPayRouter(): Router {
         });
       }
 
-      // Validate invoice is payable
-      const validation = await invoiceService.validatePayable(invoiceId, payerPublicKey);
-      if (!validation.valid || !validation.invoice) {
-        return res.status(400).json({ error: validation.error });
+      // Try to find as payment link first, then as invoice
+      let amountOut: string;
+      let settleMint: string;
+      let policyId: string | undefined;
+      let effectiveInvoiceId: string;
+
+      const paymentLink = await db.getPaymentLink(lookupId);
+      if (paymentLink) {
+        // It's a payment link
+        if (paymentLink.status === 'completed') {
+          return res.status(400).json({ error: 'Payment already completed' });
+        }
+        if (paymentLink.status === 'failed') {
+          return res.status(400).json({ error: 'Payment failed' });
+        }
+        if (paymentLink.expiresAt < Date.now()) {
+          return res.status(400).json({ error: 'Payment link expired' });
+        }
+        amountOut = paymentLink.amountUsdc;
+        settleMint = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'; // USDC mint
+        effectiveInvoiceId = paymentLink.paymentId;
+      } else {
+        // Try as invoice
+        const validation = await invoiceService.validatePayable(lookupId, payerPublicKey);
+        if (!validation.valid || !validation.invoice) {
+          return res.status(400).json({ error: validation.error || 'Invoice/Payment not found' });
+        }
+        const invoice = validation.invoice;
+        amountOut = invoice.amountOut;
+        settleMint = invoice.settleMint;
+        policyId = invoice.policyId;
+        effectiveInvoiceId = invoice.id;
       }
 
-      const invoice = validation.invoice;
-
       // Check for existing active reservation
-      const existingReservation = await db.getReservationByInvoice(invoiceId);
+      const existingReservation = await db.getReservationByInvoice(effectiveInvoiceId);
       if (existingReservation && existingReservation.status === 'active') {
         if (existingReservation.payer !== payerPublicKey) {
           return res.status(409).json({
@@ -658,8 +688,8 @@ export function createPortfolioPayRouter(): Router {
 
       // Get policy if exists
       let policy;
-      if (invoice.policyId) {
-        policy = await db.getPolicy(invoice.policyId);
+      if (policyId) {
+        policy = await db.getPolicy(policyId);
       }
 
       const connection = new Connection(config.solana.rpcUrl, config.solana.commitment);
@@ -670,11 +700,11 @@ export function createPortfolioPayRouter(): Router {
 
       // Plan the split payment
       const planResult = await planner.plan({
-        invoiceId,
+        invoiceId: effectiveInvoiceId,
         payerPublicKey,
         payMints,
-        amountOut: invoice.amountOut,
-        settleMint: invoice.settleMint,
+        amountOut,
+        settleMint,
         strategy: strategy as 'min-risk' | 'min-slippage' | 'min-failure',
         policy: policy ?? undefined,
         balances,

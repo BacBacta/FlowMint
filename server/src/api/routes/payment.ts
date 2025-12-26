@@ -514,5 +514,70 @@ export function createPaymentRoutes(db: DatabaseService): Router {
     }
   });
 
+  /**
+   * GET /api/v1/payments/merchant/:merchantId/orders
+   *
+   * Get all payment links (orders) for a merchant
+   */
+  router.get('/merchant/:merchantId/orders', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { merchantId } = req.params;
+      const status = req.query.status as string | undefined;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const offset = parseInt(req.query.offset as string) || 0;
+
+      if (!merchantId || merchantId.length < 32) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid merchant ID',
+        });
+      }
+
+      const { links, total } = await db.getPaymentLinksByMerchant(merchantId, {
+        status,
+        limit,
+        offset,
+      });
+
+      // Calculate stats
+      const stats = {
+        total,
+        pending: links.filter(l => l.status === 'pending').length,
+        completed: links.filter(l => l.status === 'completed').length,
+        expired: links.filter(l => l.status === 'expired' || l.expiresAt < Date.now()).length,
+        totalAmount: links
+          .filter(l => l.status === 'completed')
+          .reduce((sum, l) => sum + BigInt(l.amountUsdc), 0n)
+          .toString(),
+      };
+
+      res.json({
+        success: true,
+        data: {
+          orders: links.map(link => ({
+            paymentId: link.paymentId,
+            orderId: link.orderId,
+            amountUsdc: formatUsdc(link.amountUsdc),
+            status: link.expiresAt < Date.now() && link.status === 'pending' ? 'expired' : link.status,
+            createdAt: link.createdAt,
+            expiresAt: link.expiresAt,
+          })),
+          stats: {
+            ...stats,
+            totalAmount: formatUsdc(stats.totalAmount || '0'),
+          },
+          pagination: {
+            total,
+            limit,
+            offset,
+            hasMore: offset + links.length < total,
+          },
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   return router;
 }

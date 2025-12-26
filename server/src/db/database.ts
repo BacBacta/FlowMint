@@ -1332,6 +1332,57 @@ export class DatabaseService {
     return this.mapPaymentLinkRow(result[0].columns, result[0].values[0]);
   }
 
+  /**
+   * Get all payment links for a merchant
+   */
+  async getPaymentLinksByMerchant(
+    merchantId: string,
+    options?: {
+      status?: string;
+      limit?: number;
+      offset?: number;
+    }
+  ): Promise<{ links: PaymentLinkRecord[]; total: number }> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    let query = 'SELECT * FROM payment_links WHERE merchant_id = ?';
+    const params: any[] = [merchantId];
+
+    if (options?.status) {
+      query += ' AND status = ?';
+      params.push(options.status);
+    }
+
+    query += ' ORDER BY created_at DESC';
+
+    if (options?.limit) {
+      query += ' LIMIT ?';
+      params.push(options.limit);
+      if (options?.offset) {
+        query += ' OFFSET ?';
+        params.push(options.offset);
+      }
+    }
+
+    const result = this.db.exec(query, params);
+    const links: PaymentLinkRecord[] = [];
+
+    if (result.length > 0 && result[0].values.length > 0) {
+      for (const row of result[0].values) {
+        links.push(this.mapPaymentLinkRow(result[0].columns, row));
+      }
+    }
+
+    // Get total count
+    const countResult = this.db.exec(
+      'SELECT COUNT(*) as count FROM payment_links WHERE merchant_id = ?',
+      [merchantId]
+    );
+    const total = countResult.length > 0 ? Number(countResult[0].values[0][0]) : 0;
+
+    return { links, total };
+  }
+
   private mapPaymentLinkRow(columns: string[], values: any[]): PaymentLinkRecord {
     const row: Record<string, any> = {};
     columns.forEach((col, idx) => {
