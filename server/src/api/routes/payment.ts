@@ -130,6 +130,34 @@ export function createPaymentRoutes(db: DatabaseService): Router {
       const now = Date.now();
       const amountUsdc = toUsdcBaseUnits(body.amountUsdc);
 
+      // Check if a payment link with the same orderId already exists for this merchant
+      const existingLink = await db.getPaymentLinkByOrderId(body.merchantId, body.orderId);
+      if (existingLink) {
+        // If the existing link is still pending and not expired, return it
+        if (existingLink.status === 'pending' && existingLink.expiresAt > now) {
+          return res.json({
+            success: true,
+            data: {
+              paymentId: existingLink.paymentId,
+              merchantId: existingLink.merchantId,
+              orderId: existingLink.orderId,
+              amountUsdc: formatUsdc(existingLink.amountUsdc),
+              expiresAt: existingLink.expiresAt,
+              message: 'Existing payment link returned',
+            },
+          });
+        }
+        // If the existing link is completed, reject the creation
+        if (existingLink.status === 'completed') {
+          return res.status(409).json({
+            success: false,
+            error: `Order ID "${body.orderId}" has already been paid`,
+          });
+        }
+        // If the existing link is expired or failed, allow creation of a new one
+        // (we'll create a new payment link below)
+      }
+
       const paymentId = uuidv4();
       const expiresAt = now + 30 * 60 * 1000; // 30 minutes
 

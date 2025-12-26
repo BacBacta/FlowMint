@@ -1313,6 +1313,25 @@ export class DatabaseService {
     return this.mapPaymentLinkRow(result[0].columns, result[0].values[0]);
   }
 
+  /**
+   * Get a payment link by orderId and merchantId
+   * Used to check for duplicates before creating a new payment link
+   */
+  async getPaymentLinkByOrderId(
+    merchantId: string,
+    orderId: string
+  ): Promise<PaymentLinkRecord | null> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = this.db.exec(
+      'SELECT * FROM payment_links WHERE merchant_id = ? AND order_id = ?',
+      [merchantId, orderId]
+    );
+    if (result.length === 0 || result[0].values.length === 0) return null;
+
+    return this.mapPaymentLinkRow(result[0].columns, result[0].values[0]);
+  }
+
   private mapPaymentLinkRow(columns: string[], values: any[]): PaymentLinkRecord {
     const row: Record<string, any> = {};
     columns.forEach((col, idx) => {
