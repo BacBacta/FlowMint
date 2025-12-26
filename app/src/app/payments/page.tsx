@@ -580,11 +580,19 @@ function PaymentsContent() {
                       </div>
                     </div>
 
-                    {/* QR Code Placeholder */}
+                    {/* QR Code */}
                     <div className="flex justify-center">
-                      <div className="dark:bg-surface-700 flex h-32 w-32 items-center justify-center rounded-lg bg-white">
-                        <span className="text-surface-400 text-xs">QR Code</span>
-                      </div>
+                      {paymentLink.qrCode ? (
+                        <img
+                          src={paymentLink.qrCode}
+                          alt="Payment QR Code"
+                          className="h-32 w-32 rounded-lg"
+                        />
+                      ) : (
+                        <div className="dark:bg-surface-700 flex h-32 w-32 items-center justify-center rounded-lg bg-white">
+                          <span className="text-surface-400 text-xs">QR Code</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

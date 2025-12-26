@@ -5,6 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import QRCode from 'qrcode';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -49,12 +50,25 @@ export async function POST(request: NextRequest) {
     data.paymentId
   )}`;
 
+  // Generate QR code as data URL
+  let qrCodeDataUrl = '';
+  try {
+    qrCodeDataUrl = await QRCode.toDataURL(paymentUrl, {
+      errorCorrectionLevel: 'M',
+      margin: 2,
+      width: 256,
+      color: { dark: '#000000', light: '#ffffff' },
+    });
+  } catch {
+    // QR generation failed, leave empty
+  }
+
   return NextResponse.json(
     {
       success: true,
       paymentId: data.paymentId,
       paymentUrl,
-      qrCode: '',
+      qrCode: qrCodeDataUrl,
       expiresAt: new Date(data.expiresAt).toISOString(),
     },
     { headers: corsHeaders }
