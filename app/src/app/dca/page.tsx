@@ -10,9 +10,15 @@ import { TokenSelector, type Token } from '@/components/swap/TokenSelector';
 import { apiClient, signIntentMessage, type TokenInfo } from '@/lib/api';
 
 // Common tokens (with logoURI for TokenSelector compatibility)
+const SOLANA_NETWORK = process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet';
+const USDC_MINT =
+  SOLANA_NETWORK === 'devnet'
+    ? '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU'
+    : 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+
 const POPULAR_TOKENS: Token[] = [
   { symbol: 'SOL', mint: 'So11111111111111111111111111111111111111112', decimals: 9, logoURI: '' },
-  { symbol: 'USDC', mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', decimals: 6, logoURI: '' },
+  { symbol: 'USDC', mint: USDC_MINT, decimals: 6, logoURI: '' },
   { symbol: 'USDT', mint: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', decimals: 6, logoURI: '' },
 ];
 
