@@ -53,6 +53,29 @@ export function SwapForm() {
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [lastReceipt, _setLastReceipt] = useState<any>(null);
 
+  const safeParseNumber = (value: unknown): number | null => {
+    if (value === null || value === undefined) return null;
+    const n = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const formatBaseUnits = (baseUnits: unknown, decimals: number, displayDecimals = 6): string => {
+    if (typeof baseUnits !== 'string' || !/^\d+$/.test(baseUnits)) return '';
+    if (!Number.isInteger(decimals) || decimals < 0 || decimals > 18) return '';
+
+    const value = BigInt(baseUnits);
+    const divisor = 10n ** BigInt(decimals);
+    const whole = value / divisor;
+    const frac = value % divisor;
+
+    if (decimals === 0) return whole.toString();
+
+    const fracFull = frac.toString().padStart(decimals, '0');
+    const shown = fracFull.slice(0, Math.min(displayDecimals, decimals));
+    const paddedShown = shown.padEnd(displayDecimals, '0');
+    return `${whole.toString()}.${paddedShown}`;
+  };
+
   // Debounced quote fetch
   const debouncedAmount = useDebounce(inputAmount, 500);
 
@@ -146,19 +169,17 @@ export function SwapForm() {
   };
 
   // Calculate output amount
-  const outputAmount = quote
-    ? (parseInt(quote.outAmount) / 10 ** outputToken.decimals).toFixed(6)
-    : '';
+  const outputAmount = quote ? formatBaseUnits(quote.outAmount, outputToken.decimals, 6) : '';
 
   // Price impact
-  const priceImpact = quote?.priceImpactPct
-    ? (parseFloat(quote.priceImpactPct) * 100).toFixed(2)
-    : null;
+  const priceImpactPct = safeParseNumber(quote?.priceImpactPct);
+  const priceImpact = priceImpactPct !== null ? (priceImpactPct * 100).toFixed(2) : null;
 
   // Calculate risk level based on quote
   const calculateRiskLevel = (): RiskLevel => {
     if (!quote) return 'GREEN';
-    const impact = parseFloat(quote.priceImpactPct) * 100;
+    const impactPct = safeParseNumber(quote.priceImpactPct);
+    const impact = impactPct === null ? 0 : impactPct * 100;
     if (impact > 3 || slippage > 300) return 'RED';
     if (impact > 1 || slippage > 100) return 'AMBER';
     return 'GREEN';
@@ -171,7 +192,8 @@ export function SwapForm() {
     const reasons: RiskReason[] = [];
     if (!quote) return reasons;
 
-    const impact = parseFloat(quote.priceImpactPct) * 100;
+    const impactPct = safeParseNumber(quote.priceImpactPct);
+    const impact = impactPct === null ? 0 : impactPct * 100;
 
     if (impact > 3) {
       reasons.push({
@@ -354,7 +376,13 @@ export function SwapForm() {
             <span>Rate</span>
             <span>
               1 {inputToken.symbol} ≈{' '}
-              {(parseFloat(outputAmount) / parseFloat(inputAmount)).toFixed(4)} {outputToken.symbol}
+              {(() => {
+                const inAmt = safeParseNumber(inputAmount);
+                const outAmt = safeParseNumber(outputAmount);
+                if (inAmt === null || outAmt === null || inAmt <= 0) return '-';
+                return (outAmt / inAmt).toFixed(4);
+              })()}{' '}
+              {outputToken.symbol}
             </span>
           </div>
           {priceImpact && (

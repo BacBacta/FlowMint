@@ -124,6 +124,7 @@ export function SwapComparison({
   // Format amount with decimals
   const formatAmount = (amount: string) => {
     const num = parseFloat(amount);
+    if (!Number.isFinite(num)) return '—';
     if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(4)}M`;
     if (num >= 1_000) return `${(num / 1_000).toFixed(4)}K`;
     return num.toFixed(6);
@@ -134,7 +135,7 @@ export function SwapComparison({
     if (!comparison) return 0;
     const estimated = parseFloat(comparison.estimatedOutput);
     const actual = parseFloat(comparison.actualOutput);
-    if (estimated === 0) return 0;
+    if (!Number.isFinite(estimated) || !Number.isFinite(actual) || estimated === 0) return 0;
     return ((actual - estimated) / estimated) * 100;
   };
 
