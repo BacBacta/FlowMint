@@ -70,6 +70,8 @@ export async function POST(request: NextRequest) {
       paymentUrl,
       qrCode: qrCodeDataUrl,
       expiresAt: new Date(data.expiresAt).toISOString(),
+      // Include message if an existing link was returned (duplicate orderId)
+      ...(data.message && { message: data.message }),
     },
     { headers: corsHeaders }
   );

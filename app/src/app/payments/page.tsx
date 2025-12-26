@@ -28,6 +28,7 @@ type PaymentLinkResponse = {
   paymentUrl: string;
   qrCode: string;
   expiresAt: string;
+  message?: string; // e.g. 'Existing payment link returned' if duplicate orderId
 };
 
 type PaymentStatus = {
@@ -544,6 +545,35 @@ function PaymentsContent() {
                   </div>
                 ) : (
                   <div className="space-y-4">
+                    {/* Warning if existing link was returned */}
+                    {paymentLink.message && (
+                      <div className="rounded-lg border border-yellow-500 bg-yellow-50 p-4 dark:bg-yellow-900/20">
+                        <div className="flex items-start gap-3">
+                          <svg
+                            className="h-5 w-5 flex-shrink-0 text-yellow-500"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                            />
+                          </svg>
+                          <div>
+                            <p className="font-medium text-yellow-800 dark:text-yellow-200">
+                              ⚠️ Lien de paiement existant
+                            </p>
+                            <p className="mt-1 text-sm text-yellow-700 dark:text-yellow-300">
+                              Un lien de paiement avec cet Order ID existe déjà. Le lien existant a été retourné.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="bg-surface-50 dark:bg-surface-900 rounded-lg p-4">
                       <div className="text-surface-600 dark:text-surface-400 text-sm">
                         Payment ID
