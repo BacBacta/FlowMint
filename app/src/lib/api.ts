@@ -116,12 +116,31 @@ class ApiClient {
       },
     });
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: 'Unknown error' }));
-      throw new Error(error.message || `HTTP ${response.status}`);
+    const payload: any = await response.json().catch(() => null);
+
+    // Backend typically returns { success: boolean, data?: any, error?: string }
+    if (payload && typeof payload === 'object' && 'success' in payload) {
+      if (payload.success === false) {
+        const message = payload.error || payload.message || `HTTP ${response.status}`;
+        throw new Error(message);
+      }
+      if (!response.ok) {
+        const message = payload.error || payload.message || `HTTP ${response.status}`;
+        throw new Error(message);
+      }
+      // Prefer unwrapping `data` when present.
+      if ('data' in payload) {
+        return payload.data as T;
+      }
+      return payload as T;
     }
 
-    return response.json();
+    if (!response.ok) {
+      const message = payload?.message || payload?.error || `HTTP ${response.status}`;
+      throw new Error(message);
+    }
+
+    return payload as T;
   }
 
   // Health check (backend uses /health directly, not under /api/v1)

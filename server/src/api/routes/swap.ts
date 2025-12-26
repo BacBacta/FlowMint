@@ -83,19 +83,7 @@ export function createSwapRoutes(db: DatabaseService): Router {
 
       res.json({
         success: true,
-        data: {
-          inputMint: quote.inputMint,
-          outputMint: quote.outputMint,
-          inAmount: quote.inAmount,
-          outAmount: quote.outAmount,
-          priceImpactPct: quote.priceImpactPct,
-          slippageBps: quote.slippageBps,
-          routeSteps: quote.routePlan.length,
-          routes: quote.routePlan.map(step => ({
-            label: step.swapInfo.label,
-            percent: step.percent,
-          })),
-        },
+        data: quote,
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
