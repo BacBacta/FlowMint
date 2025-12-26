@@ -6,7 +6,7 @@ import { useState } from 'react';
 
 import { Footer } from '@/components/Footer';
 import { Header } from '@/components/Header';
-import { apiClient } from '@/lib/api';
+import { apiClient, signIntentMessage } from '@/lib/api';
 
 // Common tokens with Pyth feed IDs
 const TOKENS_WITH_FEEDS = [
@@ -31,7 +31,7 @@ const TOKENS_WITH_FEEDS = [
 ];
 
 export default function StopLossPage() {
-  const { publicKey, connected } = useWallet();
+  const { publicKey, connected, signMessage } = useWallet();
   const queryClient = useQueryClient();
 
   const [cancelingIntentId, setCancelingIntentId] = useState<string | null>(null);
@@ -66,17 +66,27 @@ export default function StopLossPage() {
   // Create stop-loss mutation
   const createStopLoss = useMutation({
     mutationFn: async () => {
-      if (!publicKey) throw new Error('Wallet not connected');
+      if (!publicKey || !signMessage) throw new Error('Wallet not connected or signMessage unavailable');
 
-      return apiClient.createIntent({
-        userPublicKey: publicKey.toBase58(),
-        type: 'stop-loss',
-        inputMint: selectedToken.mint,
-        outputMint: outputToken.mint,
-        totalAmount: Math.floor(parseFloat(amount) * 10 ** selectedToken.decimals),
-        triggerPrice: parseFloat(triggerPrice),
-        pythFeedId: selectedToken.pythFeedId,
-      });
+      // Sign a message to prove wallet ownership
+      const signatureData = await signIntentMessage(
+        signMessage,
+        'CREATE_STOP_LOSS',
+        publicKey.toBase58()
+      );
+
+      return apiClient.createIntent(
+        {
+          userPublicKey: publicKey.toBase58(),
+          type: 'stop-loss',
+          inputMint: selectedToken.mint,
+          outputMint: outputToken.mint,
+          totalAmount: Math.floor(parseFloat(amount) * 10 ** selectedToken.decimals),
+          triggerPrice: parseFloat(triggerPrice),
+          pythFeedId: selectedToken.pythFeedId,
+        },
+        signatureData
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: intentsQueryKey });
@@ -88,8 +98,16 @@ export default function StopLossPage() {
   // Cancel stop-loss mutation
   const cancelStopLoss = useMutation({
     mutationFn: async (intentId: string) => {
-      if (!publicKey) throw new Error('Wallet not connected');
-      return apiClient.cancelIntent(intentId, publicKey.toBase58());
+      if (!publicKey || !signMessage) throw new Error('Wallet not connected or signMessage unavailable');
+
+      // Sign a message to prove wallet ownership
+      const signatureData = await signIntentMessage(
+        signMessage,
+        'CANCEL',
+        publicKey.toBase58()
+      );
+
+      return apiClient.cancelIntent(intentId, publicKey.toBase58(), signatureData);
     },
     onMutate: async intentId => {
       setCancelingIntentId(intentId);

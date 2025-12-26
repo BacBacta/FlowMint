@@ -6,12 +6,43 @@
  * - When empty: uses Next.js API routes with /api routes
  */
 
+import bs58 from 'bs58';
+
 // Backend URL (empty = use Next.js API routes)
 const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 // API prefix differs based on target
 const API_PREFIX = BACKEND_URL ? '/api/v1' : '/api';
 const API_URL = BACKEND_URL;
+
+/**
+ * Create the message that must be signed for intent operations.
+ * Must match the backend format exactly.
+ */
+export function createIntentAuthMessage(
+  action: 'CREATE_DCA' | 'CREATE_STOP_LOSS' | 'CANCEL',
+  userPublicKey: string,
+  timestamp: number
+): string {
+  return `FlowMint Intent ${action}\n\nWallet: ${userPublicKey}\nTimestamp: ${timestamp}\n\nSign this message to authorize this action. This will not trigger a blockchain transaction.`;
+}
+
+/**
+ * Sign an intent message using the wallet's signMessage function.
+ * Returns the signature as a base58 string.
+ */
+export async function signIntentMessage(
+  signMessage: (message: Uint8Array) => Promise<Uint8Array>,
+  action: 'CREATE_DCA' | 'CREATE_STOP_LOSS' | 'CANCEL',
+  userPublicKey: string
+): Promise<{ signature: string; timestamp: number }> {
+  const timestamp = Date.now();
+  const message = createIntentAuthMessage(action, userPublicKey, timestamp);
+  const messageBytes = new TextEncoder().encode(message);
+  const signatureBytes = await signMessage(messageBytes);
+  const signature = bs58.encode(signatureBytes);
+  return { signature, timestamp };
+}
 
 // Types
 export interface QuoteResponse {
@@ -215,7 +246,11 @@ class ApiClient {
   }
 
   // Intent endpoints (backend uses /intents, not /intent)
-  async createIntent(params: IntentRequest): Promise<IntentResponse> {
+  // Now require signature and timestamp for wallet ownership proof
+  async createIntent(
+    params: IntentRequest,
+    signatureData: { signature: string; timestamp: number }
+  ): Promise<IntentResponse> {
     if (params.type === 'dca') {
       return this.request(`${API_PREFIX}/intents/dca`, {
         method: 'POST',
@@ -226,6 +261,8 @@ class ApiClient {
           totalAmount: String(Math.floor(params.totalAmount)),
           numberOfSwaps: params.numberOfOrders,
           intervalSeconds: params.intervalMs ? Math.floor(params.intervalMs / 1000) : undefined,
+          signature: signatureData.signature,
+          timestamp: signatureData.timestamp,
         }),
       });
     }
@@ -241,6 +278,8 @@ class ApiClient {
         // Default to 'below' as a safe/common stop-loss direction.
         priceDirection: 'below',
         priceFeedId: params.pythFeedId,
+        signature: signatureData.signature,
+        timestamp: signatureData.timestamp,
       }),
     });
   }
@@ -249,10 +288,18 @@ class ApiClient {
     return this.request(`${API_PREFIX}/intents/user/${userPublicKey}`);
   }
 
-  async cancelIntent(intentId: string, userPublicKey: string): Promise<{ success: boolean }> {
+  async cancelIntent(
+    intentId: string,
+    userPublicKey: string,
+    signatureData: { signature: string; timestamp: number }
+  ): Promise<{ success: boolean }> {
     return this.request(`${API_PREFIX}/intents/${intentId}`, {
       method: 'DELETE',
-      body: JSON.stringify({ userPublicKey }),
+      body: JSON.stringify({
+        userPublicKey,
+        signature: signatureData.signature,
+        timestamp: signatureData.timestamp,
+      }),
     });
   }
 

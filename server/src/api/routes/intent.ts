@@ -6,6 +6,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 
 import { DatabaseService } from '../../db/database.js';
+import { verifyWalletSignature } from '../../middleware/auth.js';
 import {
   IntentScheduler,
   IntentType,
@@ -44,6 +45,82 @@ const cancelIntentSchema = z.object({
 });
 
 /**
+ * Signature schema - required for wallet ownership proof
+ */
+const signatureSchema = z.object({
+  signature: z.string().min(64).max(128),
+  timestamp: z.number().int().positive(),
+});
+
+/**
+ * Max age of a valid signature (5 minutes)
+ */
+const SIGNATURE_MAX_AGE_MS = 5 * 60 * 1000;
+
+/**
+ * Create the message that must be signed for intent operations
+ */
+function createIntentAuthMessage(action: string, userPublicKey: string, timestamp: number): string {
+  return `FlowMint Intent ${action}\n\nWallet: ${userPublicKey}\nTimestamp: ${timestamp}\n\nSign this message to authorize this action. This will not trigger a blockchain transaction.`;
+}
+
+/**
+ * Middleware to verify wallet signature for intent operations
+ */
+function verifyIntentSignature(action: string) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    try {
+      const { signature, timestamp } = signatureSchema.parse(req.body);
+      const userPublicKey = req.body.userPublicKey;
+
+      if (!userPublicKey) {
+        res.status(400).json({
+          success: false,
+          error: 'userPublicKey is required',
+        });
+        return;
+      }
+
+      // Check timestamp is recent
+      const now = Date.now();
+      if (Math.abs(now - timestamp) > SIGNATURE_MAX_AGE_MS) {
+        res.status(401).json({
+          success: false,
+          error: 'Signature expired or timestamp invalid',
+        });
+        return;
+      }
+
+      // Verify signature
+      const message = createIntentAuthMessage(action, userPublicKey, timestamp);
+      const isValid = verifyWalletSignature(message, signature, userPublicKey);
+
+      if (!isValid) {
+        log.warn({ userPublicKey, action }, 'Invalid wallet signature for intent');
+        res.status(401).json({
+          success: false,
+          error: 'Invalid wallet signature',
+        });
+        return;
+      }
+
+      log.info({ userPublicKey, action }, 'Wallet signature verified');
+      next();
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({
+          success: false,
+          error: 'Signature and timestamp are required',
+          details: error.errors,
+        });
+        return;
+      }
+      next(error);
+    }
+  };
+}
+
+/**
  * Create intent routes
  */
 export function createIntentRoutes(db: DatabaseService): Router {
@@ -55,8 +132,9 @@ export function createIntentRoutes(db: DatabaseService): Router {
    * POST /api/v1/intents/dca
    *
    * Create a DCA (Dollar-Cost Averaging) intent
+   * Requires wallet signature for authorization
    */
-  router.post('/dca', async (req: Request, res: Response, next: NextFunction) => {
+  router.post('/dca', verifyIntentSignature('CREATE_DCA'), async (req: Request, res: Response, next: NextFunction) => {
     try {
       const body = createDCASchema.parse(req.body);
 
@@ -115,8 +193,9 @@ export function createIntentRoutes(db: DatabaseService): Router {
    * POST /api/v1/intents/stop-loss
    *
    * Create a stop-loss intent
+   * Requires wallet signature for authorization
    */
-  router.post('/stop-loss', async (req: Request, res: Response, next: NextFunction) => {
+  router.post('/stop-loss', verifyIntentSignature('CREATE_STOP_LOSS'), async (req: Request, res: Response, next: NextFunction) => {
     try {
       const body = createStopLossSchema.parse(req.body);
 
@@ -174,8 +253,9 @@ export function createIntentRoutes(db: DatabaseService): Router {
    * DELETE /api/v1/intents/:id
    *
    * Cancel an intent
+   * Requires wallet signature for authorization
    */
-  router.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
+  router.delete('/:id', verifyIntentSignature('CANCEL'), async (req: Request, res: Response, next: NextFunction) => {
     try {
       const body = cancelIntentSchema.parse(req.body);
 

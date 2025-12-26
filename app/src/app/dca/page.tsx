@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { Footer } from '@/components/Footer';
 import { Header } from '@/components/Header';
 import { TokenSelector, type Token } from '@/components/swap/TokenSelector';
-import { apiClient, type TokenInfo } from '@/lib/api';
+import { apiClient, signIntentMessage, type TokenInfo } from '@/lib/api';
 
 // Common tokens (with logoURI for TokenSelector compatibility)
 const POPULAR_TOKENS: Token[] = [
@@ -26,7 +26,7 @@ const INTERVALS = [
 ];
 
 export default function DCAPage() {
-  const { publicKey, connected } = useWallet();
+  const { publicKey, connected, signMessage } = useWallet();
   const queryClient = useQueryClient();
 
   const normalizeIntentType = (value: unknown): string => {
@@ -74,17 +74,27 @@ export default function DCAPage() {
   // Create DCA mutation
   const createDCA = useMutation({
     mutationFn: async () => {
-      if (!publicKey) throw new Error('Wallet not connected');
+      if (!publicKey || !signMessage) throw new Error('Wallet not connected or signMessage unavailable');
 
-      return apiClient.createIntent({
-        userPublicKey: publicKey.toBase58(),
-        type: 'dca',
-        inputMint: inputToken.mint,
-        outputMint: outputToken.mint,
-        totalAmount: Math.floor(parseFloat(totalAmount) * 10 ** inputToken.decimals),
-        intervalMs: interval,
-        numberOfOrders,
-      });
+      // Sign a message to prove wallet ownership
+      const signatureData = await signIntentMessage(
+        signMessage,
+        'CREATE_DCA',
+        publicKey.toBase58()
+      );
+
+      return apiClient.createIntent(
+        {
+          userPublicKey: publicKey.toBase58(),
+          type: 'dca',
+          inputMint: inputToken.mint,
+          outputMint: outputToken.mint,
+          totalAmount: Math.floor(parseFloat(totalAmount) * 10 ** inputToken.decimals),
+          intervalMs: interval,
+          numberOfOrders,
+        },
+        signatureData
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: intentsQueryKey });
@@ -95,8 +105,16 @@ export default function DCAPage() {
   // Cancel DCA mutation
   const cancelDCA = useMutation({
     mutationFn: async (intentId: string) => {
-      if (!publicKey) throw new Error('Wallet not connected');
-      return apiClient.cancelIntent(intentId, publicKey.toBase58());
+      if (!publicKey || !signMessage) throw new Error('Wallet not connected or signMessage unavailable');
+
+      // Sign a message to prove wallet ownership
+      const signatureData = await signIntentMessage(
+        signMessage,
+        'CANCEL',
+        publicKey.toBase58()
+      );
+
+      return apiClient.cancelIntent(intentId, publicKey.toBase58(), signatureData);
     },
     onMutate: async intentId => {
       setCancelingIntentId(intentId);
