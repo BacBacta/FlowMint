@@ -309,31 +309,54 @@ export function createSwapRoutes(db: DatabaseService): Router {
    * GET /api/v1/swap/token/:mint
    *
    * Resolve token metadata by mint (useful for custom tokens pasted by the user).
-   * Uses the full Jupiter token list (no tags) so it can include non-verified/community tokens.
+   * Uses Jupiter token list first, then falls back to DexScreener API for new/unverified tokens.
    */
   router.get('/token/:mint', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const mint = z.string().min(32).max(64).parse(req.params.mint);
 
+      // Try Jupiter first
       const tokens = await jupiterService.getTokenList();
       const token = tokens.find(t => t.address === mint || (t as any).mint === mint);
 
-      if (!token) {
-        return res.status(404).json({
-          success: false,
-          error: 'Token not found',
+      if (token) {
+        return res.json({
+          success: true,
+          data: {
+            symbol: token.symbol,
+            mint: (token as any).address ?? (token as any).mint,
+            decimals: token.decimals,
+            logoURI: token.logoURI ?? '',
+          },
         });
       }
 
-      // Normalized response
-      res.json({
-        success: true,
-        data: {
-          symbol: token.symbol,
-          mint: (token as any).address ?? (token as any).mint,
-          decimals: token.decimals,
-          logoURI: token.logoURI ?? '',
-        },
+      // Fallback to DexScreener for new/pump.fun tokens
+      log.info({ mint }, 'Token not found in Jupiter, trying DexScreener');
+      const dexRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mint}`);
+      if (dexRes.ok) {
+        const dexData = await dexRes.json();
+        const pair = dexData?.pairs?.[0];
+        if (pair) {
+          const baseToken = pair.baseToken;
+          if (baseToken && baseToken.address === mint) {
+            return res.json({
+              success: true,
+              data: {
+                symbol: baseToken.symbol,
+                mint: baseToken.address,
+                // DexScreener doesn't always give decimals; default to 9 (common for SPL)
+                decimals: 9,
+                logoURI: pair.info?.imageUrl ?? '',
+              },
+            });
+          }
+        }
+      }
+
+      return res.status(404).json({
+        success: false,
+        error: 'Token not found in Jupiter or DexScreener',
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
