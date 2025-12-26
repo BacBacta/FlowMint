@@ -29,6 +29,11 @@ export default function DCAPage() {
   const { publicKey, connected } = useWallet();
   const queryClient = useQueryClient();
 
+  const normalizeIntentType = (value: unknown): string => {
+    if (typeof value !== 'string') return '';
+    return value.toLowerCase().replaceAll('_', '-');
+  };
+
   const [customTokens, setCustomTokens] = useState<Token[]>(POPULAR_TOKENS);
   const [inputToken, setInputToken] = useState<Token>(POPULAR_TOKENS[1]); // USDC
   const [outputToken, setOutputToken] = useState<Token>(POPULAR_TOKENS[0]); // SOL
@@ -58,7 +63,7 @@ export default function DCAPage() {
     queryFn: async () => {
       if (!publicKey) return [];
       const all = await apiClient.getIntents(publicKey.toBase58());
-      return all.filter((i: any) => i.type === 'dca');
+      return all.filter((i: any) => normalizeIntentType(i.type) === 'dca');
     },
     enabled: !!publicKey,
   });

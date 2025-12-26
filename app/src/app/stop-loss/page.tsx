@@ -34,6 +34,11 @@ export default function StopLossPage() {
   const { publicKey, connected } = useWallet();
   const queryClient = useQueryClient();
 
+  const normalizeIntentType = (value: unknown): string => {
+    if (typeof value !== 'string') return '';
+    return value.toLowerCase().replaceAll('_', '-');
+  };
+
   const [selectedToken, setSelectedToken] = useState(TOKENS_WITH_FEEDS[0]);
   const [outputToken] = useState({
     symbol: 'USDC',
@@ -49,7 +54,7 @@ export default function StopLossPage() {
     queryFn: async () => {
       if (!publicKey) return [];
       const all = await apiClient.getIntents(publicKey.toBase58());
-      return all.filter((i: any) => i.type === 'stop-loss');
+      return all.filter((i: any) => normalizeIntentType(i.type) === 'stop-loss');
     },
     enabled: !!publicKey,
   });
