@@ -36,7 +36,7 @@ export default function StopLossPage() {
 
   const normalizeIntentType = (value: unknown): string => {
     if (typeof value !== 'string') return '';
-    return value.toLowerCase().replaceAll('_', '-');
+    return value.toLowerCase().replace(/_/g, '-');
   };
 
   const [selectedToken, setSelectedToken] = useState(TOKENS_WITH_FEEDS[0]);

@@ -31,7 +31,7 @@ export default function DCAPage() {
 
   const normalizeIntentType = (value: unknown): string => {
     if (typeof value !== 'string') return '';
-    return value.toLowerCase().replaceAll('_', '-');
+    return value.toLowerCase().replace(/_/g, '-');
   };
 
   const [customTokens, setCustomTokens] = useState<Token[]>(POPULAR_TOKENS);
