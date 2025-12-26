@@ -42,7 +42,7 @@ export interface SwapRequest {
   userPublicKey: string;
   inputMint: string;
   outputMint: string;
-  amount: number;
+  amount: string; // Base units as string
   slippageBps?: number;
   protectedMode?: boolean;
 }

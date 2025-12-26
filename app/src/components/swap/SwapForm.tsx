@@ -134,7 +134,7 @@ export function SwapForm() {
         userPublicKey: publicKey.toBase58(),
         inputMint: inputToken.mint,
         outputMint: outputToken.mint,
-        amount: Math.floor(parseFloat(inputAmount) * 10 ** inputToken.decimals),
+        amount: Math.floor(parseFloat(inputAmount) * 10 ** inputToken.decimals).toString(),
         slippageBps: slippage,
         protectedMode,
       });
