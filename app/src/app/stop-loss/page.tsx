@@ -34,6 +34,8 @@ export default function StopLossPage() {
   const { publicKey, connected } = useWallet();
   const queryClient = useQueryClient();
 
+  const [cancelingIntentId, setCancelingIntentId] = useState<string | null>(null);
+
   const normalizeIntentType = (value: unknown): string => {
     if (typeof value !== 'string') return '';
     return value.toLowerCase().replace(/_/g, '-');
@@ -49,14 +51,16 @@ export default function StopLossPage() {
   const [triggerPrice, setTriggerPrice] = useState('');
 
   // Fetch existing stop-loss intents
+  const intentsQueryKey = ['intents', publicKey?.toBase58(), 'stop-loss'] as const;
   const { data: intents, isLoading: intentsLoading } = useQuery({
-    queryKey: ['intents', publicKey?.toBase58(), 'stop-loss'],
+    queryKey: intentsQueryKey,
     queryFn: async () => {
       if (!publicKey) return [];
       const all = await apiClient.getIntents(publicKey.toBase58());
       return all.filter((i: any) => normalizeIntentType(i.type) === 'stop-loss');
     },
     enabled: !!publicKey,
+    refetchInterval: 15000,
   });
 
   // Create stop-loss mutation
@@ -75,7 +79,7 @@ export default function StopLossPage() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['intents'] });
+      queryClient.invalidateQueries({ queryKey: intentsQueryKey });
       setAmount('');
       setTriggerPrice('');
     },
@@ -87,8 +91,28 @@ export default function StopLossPage() {
       if (!publicKey) throw new Error('Wallet not connected');
       return apiClient.cancelIntent(intentId, publicKey.toBase58());
     },
+    onMutate: async intentId => {
+      setCancelingIntentId(intentId);
+      await queryClient.cancelQueries({ queryKey: intentsQueryKey });
+
+      const previous = queryClient.getQueryData<any[]>(intentsQueryKey) || [];
+      queryClient.setQueryData<any[]>(
+        intentsQueryKey,
+        previous.filter(i => i?.id !== intentId)
+      );
+
+      return { previous };
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['intents'] });
+      queryClient.invalidateQueries({ queryKey: intentsQueryKey });
+    },
+    onError: (_err, _intentId, ctx) => {
+      if (ctx?.previous) {
+        queryClient.setQueryData(intentsQueryKey, ctx.previous);
+      }
+    },
+    onSettled: () => {
+      setCancelingIntentId(null);
     },
   });
 
@@ -255,6 +279,11 @@ export default function StopLossPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
+                  {cancelStopLoss.isError && (
+                    <div className="text-sm text-red-500">
+                      {(cancelStopLoss.error as Error).message}
+                    </div>
+                  )}
                   {intents.map((intent: any) => {
                     const fromMint = intent.tokenFrom ?? intent.inputMint;
                     const token = TOKENS_WITH_FEEDS.find(t => t.mint === fromMint);
@@ -296,10 +325,10 @@ export default function StopLossPage() {
                           </div>
                           <button
                             onClick={() => cancelStopLoss.mutate(intent.id)}
-                            disabled={cancelStopLoss.isPending}
+                            disabled={cancelingIntentId === intent.id}
                             className="btn-ghost text-sm text-red-500 hover:text-red-600"
                           >
-                            Cancel
+                            {cancelingIntentId === intent.id ? 'Cancelling…' : 'Cancel'}
                           </button>
                         </div>
                       </div>

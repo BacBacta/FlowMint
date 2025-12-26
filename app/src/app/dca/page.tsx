@@ -40,6 +40,7 @@ export default function DCAPage() {
   const [totalAmount, setTotalAmount] = useState('');
   const [numberOfOrders, setNumberOfOrders] = useState(10);
   const [interval, setInterval] = useState(INTERVALS[3].value); // Daily
+  const [cancelingIntentId, setCancelingIntentId] = useState<string | null>(null);
 
   // Resolve token by mint (for custom tokens)
   const resolveTokenByMint = async (mint: string): Promise<Token | null> => {
@@ -58,14 +59,16 @@ export default function DCAPage() {
   };
 
   // Fetch existing DCA intents
+  const intentsQueryKey = ['intents', publicKey?.toBase58(), 'dca'] as const;
   const { data: intents, isLoading: intentsLoading } = useQuery({
-    queryKey: ['intents', publicKey?.toBase58(), 'dca'],
+    queryKey: intentsQueryKey,
     queryFn: async () => {
       if (!publicKey) return [];
       const all = await apiClient.getIntents(publicKey.toBase58());
       return all.filter((i: any) => normalizeIntentType(i.type) === 'dca');
     },
     enabled: !!publicKey,
+    refetchInterval: 15000,
   });
 
   // Create DCA mutation
@@ -84,7 +87,7 @@ export default function DCAPage() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['intents'] });
+      queryClient.invalidateQueries({ queryKey: intentsQueryKey });
       setTotalAmount('');
     },
   });
@@ -95,8 +98,28 @@ export default function DCAPage() {
       if (!publicKey) throw new Error('Wallet not connected');
       return apiClient.cancelIntent(intentId, publicKey.toBase58());
     },
+    onMutate: async intentId => {
+      setCancelingIntentId(intentId);
+      await queryClient.cancelQueries({ queryKey: intentsQueryKey });
+
+      const previous = queryClient.getQueryData<any[]>(intentsQueryKey) || [];
+      queryClient.setQueryData<any[]>(
+        intentsQueryKey,
+        previous.filter(i => i?.id !== intentId)
+      );
+
+      return { previous };
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['intents'] });
+      queryClient.invalidateQueries({ queryKey: intentsQueryKey });
+    },
+    onError: (_err, _intentId, ctx) => {
+      if (ctx?.previous) {
+        queryClient.setQueryData(intentsQueryKey, ctx.previous);
+      }
+    },
+    onSettled: () => {
+      setCancelingIntentId(null);
     },
   });
 
@@ -270,6 +293,9 @@ export default function DCAPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
+                  {cancelDCA.isError && (
+                    <div className="text-sm text-red-500">{(cancelDCA.error as Error).message}</div>
+                  )}
                   {intents.map((intent: any) => (
                     (() => {
                       const fromMint = intent.tokenFrom ?? intent.inputMint;
@@ -297,13 +323,23 @@ export default function DCAPage() {
                               ? `${executed} / ${total} orders`
                               : `${executed} executed`}
                           </div>
+                          {typeof intent.intervalSeconds === 'number' && (
+                            <div className="text-surface-500 text-sm">
+                              Every {Math.round(intent.intervalSeconds / 60)} min
+                            </div>
+                          )}
+                          {typeof intent.nextExecutionAt === 'number' && (
+                            <div className="text-surface-500 text-sm">
+                              Next: {new Date(intent.nextExecutionAt).toLocaleString()}
+                            </div>
+                          )}
                         </div>
                         <button
                           onClick={() => cancelDCA.mutate(intent.id)}
-                          disabled={cancelDCA.isPending}
+                          disabled={cancelingIntentId === intent.id}
                           className="btn-ghost text-sm text-red-500 hover:text-red-600"
                         >
-                          Cancel
+                          {cancelingIntentId === intent.id ? 'Cancelling…' : 'Cancel'}
                         </button>
                       </div>
                       {progressPct !== null && (
