@@ -8,18 +8,20 @@
  * - Traffic light scoring (GREEN, AMBER, RED)
  */
 
-import { getMint, getAccount, TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import { getMint, getTransferFeeConfig, TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { Connection, PublicKey } from '@solana/web3.js';
 
 import { config } from '../config/index.js';
 import {
   SLIPPAGE_SETTINGS,
   PRICE_IMPACT_THRESHOLDS,
+  TRADE_RISK_THRESHOLDS,
   SIZE_LIMITS,
   TOKEN_SAFETY_CHECKS,
   TOKEN_BLACKLIST,
   TOKEN_WHITELIST,
   KNOWN_TOKENS,
+  DEVNET_TOKENS,
 } from '../config/risk-policies.js';
 import { logger } from '../utils/logger.js';
 
@@ -37,10 +39,37 @@ export enum RiskSignal {
 }
 
 /**
+ * Stable reason codes (UI should map these to labels).
+ */
+export enum RiskReasonCode {
+  // Trade risk
+  PRICE_IMPACT_CAUTION = 'PRICE_IMPACT_CAUTION',
+  PRICE_IMPACT_UNSAFE = 'PRICE_IMPACT_UNSAFE',
+  SLIPPAGE_CAUTION = 'SLIPPAGE_CAUTION',
+  SLIPPAGE_UNSAFE = 'SLIPPAGE_UNSAFE',
+  QUOTE_STALE = 'QUOTE_STALE',
+  QUOTE_EXPIRED = 'QUOTE_EXPIRED',
+  ROUTE_COMPLEX = 'ROUTE_COMPLEX',
+
+  // Token safety
+  TOKEN_BLACKLISTED = 'TOKEN_BLACKLISTED',
+  TOKEN_NOT_ALLOWLISTED = 'TOKEN_NOT_ALLOWLISTED',
+  TOKEN_HAS_FREEZE_AUTHORITY = 'TOKEN_HAS_FREEZE_AUTHORITY',
+  TOKEN_HAS_MINT_AUTHORITY = 'TOKEN_HAS_MINT_AUTHORITY',
+  TOKEN_TOKEN2022_WITH_TRANSFER_FEE = 'TOKEN_TOKEN2022_WITH_TRANSFER_FEE',
+  TOKEN_TOKEN2022_UNSUPPORTED = 'TOKEN_TOKEN2022_UNSUPPORTED',
+  TOKEN_UNKNOWN = 'TOKEN_UNKNOWN',
+  TOKEN_SPOOFED_SYMBOL = 'TOKEN_SPOOFED_SYMBOL',
+
+  // Composition
+  TOKEN_UNKNOWN_AND_TRADE_RISKY = 'TOKEN_UNKNOWN_AND_TRADE_RISKY',
+}
+
+/**
  * Individual risk reason
  */
 export interface RiskReason {
-  code: string;
+  code: RiskReasonCode | string;
   severity: RiskSignal;
   message: string;
   detail?: string;
@@ -53,6 +82,7 @@ export interface RiskReason {
 export interface TokenSafetyInfo {
   mint: string;
   symbol?: string;
+  name?: string;
   hasFreezeAuthority: boolean;
   hasMintAuthority: boolean;
   isToken2022: boolean;
@@ -69,6 +99,10 @@ export interface TokenSafetyInfo {
 export interface RiskAssessment {
   /** Overall risk level */
   level: RiskSignal;
+  /** Intrinsic token safety level */
+  tokenSafetyLevel: RiskSignal;
+  /** Transaction-specific trade risk level */
+  tradeRiskLevel: RiskSignal;
   /** Individual risk reasons */
   reasons: RiskReason[];
   /** Token safety info for input */
@@ -104,8 +138,8 @@ export interface ScoreSwapRequest {
  */
 export class RiskScoringService {
   private connection: Connection;
-  private tokenInfoCache: Map<string, TokenSafetyInfo> = new Map();
-  private readonly CACHE_TTL = 60000; // 1 minute
+  private tokenInfoCache: Map<string, { info: TokenSafetyInfo; expiresAt: number }> = new Map();
+  private readonly CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
   constructor() {
     this.connection = new Connection(config.solana.rpcUrl, {
@@ -123,35 +157,70 @@ export class RiskScoringService {
 
     log.debug({ inputMint: request.inputMint, outputMint: request.outputMint }, 'Scoring swap');
 
-    // 1. Score quote mechanics
-    this.scoreQuoteMechanics(quote, request, reasons, thresholdsUsed);
+    // 1) Trade risk (transactional)
+    const tradeRiskReasons: RiskReason[] = [];
+    this.scoreTradeRisk(quote, request, tradeRiskReasons, thresholdsUsed);
 
-    // 2. Score quote freshness
-    const quoteAgeSeconds = this.scoreQuoteFreshness(
-      request.quoteTimestamp,
-      reasons,
-      thresholdsUsed
-    );
+    // 2) Quote freshness
+    const quoteAgeSeconds = this.scoreQuoteFreshness(request.quoteTimestamp, tradeRiskReasons);
 
-    // 3. Check token safety (async)
+    // 3) Token safety (intrinsic)
     const [inputTokenSafety, outputTokenSafety] = await Promise.all([
       this.getTokenSafetyInfo(request.inputMint),
       this.getTokenSafetyInfo(request.outputMint),
     ]);
 
-    // Score token hygiene
-    this.scoreTokenHygiene(inputTokenSafety, 'input', reasons);
-    this.scoreTokenHygiene(outputTokenSafety, 'output', reasons);
+    const tokenSafetyReasons: RiskReason[] = [];
+    const inputTokenSafetyLevel = this.scoreTokenSafety(
+      inputTokenSafety,
+      'input',
+      tokenSafetyReasons,
+      request.protectedMode
+    );
+    const outputTokenSafetyLevel = this.scoreTokenSafety(
+      outputTokenSafety,
+      'output',
+      tokenSafetyReasons,
+      request.protectedMode
+    );
+    const tokenSafetyLevel = this.maxLevel(inputTokenSafetyLevel, outputTokenSafetyLevel);
 
-    // 4. Score size vs liquidity
-    this.scoreSizeVsLiquidity(request, quote, reasons, thresholdsUsed);
+    // Composition rule: unknown token + already risky trade => UNSAFE
+    const hasUnknownToken =
+      tokenSafetyReasons.some(r => r.code === RiskReasonCode.TOKEN_UNKNOWN) ||
+      tokenSafetyReasons.some(r => r.code === RiskReasonCode.TOKEN_NOT_ALLOWLISTED);
+    const tradeRiskLevel = this.calculateOverallLevel(tradeRiskReasons);
+    if (hasUnknownToken && tradeRiskLevel !== RiskSignal.GREEN) {
+      tokenSafetyReasons.push({
+        code: RiskReasonCode.TOKEN_UNKNOWN_AND_TRADE_RISKY,
+        severity: RiskSignal.RED,
+        message: 'Unknown token combined with elevated trade risk',
+        detail: 'FlowMint blocks unknown tokens when the trade is already risky',
+      });
+    }
 
-    // Calculate overall level
-    const level = this.calculateOverallLevel(reasons);
+    // 4) Size vs liquidity (transactional)
+    this.scoreSizeVsLiquidity(request, quote, tradeRiskReasons, thresholdsUsed);
 
-    // Determine blocking rules
-    const blockedInProtectedMode =
-      level === RiskSignal.RED || (request.protectedMode && level === RiskSignal.AMBER);
+    // Merge reasons (token first, then trade)
+    reasons.push(...tokenSafetyReasons, ...tradeRiskReasons);
+
+    // Recompute levels after composition
+    const finalTokenSafetyLevel = this.calculateOverallLevel(tokenSafetyReasons);
+    const finalTradeRiskLevel = this.calculateOverallLevel(tradeRiskReasons);
+    const level = this.maxLevel(finalTokenSafetyLevel, finalTradeRiskLevel);
+
+    // Protected policy: block UNSAFE always. Allow CAUTION only if within protected ceilings.
+    const blockedInProtectedMode = this.computeProtectedBlocking({
+      protectedMode: request.protectedMode,
+      overallLevel: level,
+      tokenSafetyLevel: finalTokenSafetyLevel,
+      tradeRiskLevel: finalTradeRiskLevel,
+      slippageBps: request.slippageBps,
+      priceImpactPct: this.getQuotePriceImpactPct(quote),
+      quoteAgeSeconds,
+      reasons,
+    });
 
     const requiresAcknowledgement = level === RiskSignal.AMBER && !request.protectedMode;
 
@@ -167,6 +236,8 @@ export class RiskScoringService {
 
     return {
       level,
+      tokenSafetyLevel: finalTokenSafetyLevel,
+      tradeRiskLevel: finalTradeRiskLevel,
       reasons,
       inputTokenSafety,
       outputTokenSafety,
@@ -181,80 +252,76 @@ export class RiskScoringService {
   /**
    * Score quote mechanical risks
    */
-  private scoreQuoteMechanics(
+  private scoreTradeRisk(
     quote: QuoteResponse,
     request: ScoreSwapRequest,
     reasons: RiskReason[],
     thresholds: Record<string, number>
   ): void {
-    const priceImpact = parseFloat(quote.priceImpactPct);
+    const priceImpactPct = this.getQuotePriceImpactPct(quote);
 
-    // Price impact thresholds depend on mode
-    const maxImpact = request.protectedMode
-      ? PRICE_IMPACT_THRESHOLDS.MAX_PROTECTED_PCT
-      : PRICE_IMPACT_THRESHOLDS.MAX_NORMAL_PCT;
+    thresholds['priceImpactCautionPct'] = TRADE_RISK_THRESHOLDS.PRICE_IMPACT_CAUTION_PCT;
+    thresholds['priceImpactUnsafePct'] = TRADE_RISK_THRESHOLDS.PRICE_IMPACT_UNSAFE_PCT;
 
-    thresholds['priceImpactLimit'] = maxImpact;
-
-    if (priceImpact > PRICE_IMPACT_THRESHOLDS.ABSOLUTE_MAX_PCT) {
+    if (priceImpactPct >= TRADE_RISK_THRESHOLDS.PRICE_IMPACT_UNSAFE_PCT) {
       reasons.push({
-        code: 'PRICE_IMPACT_CRITICAL',
+        code: RiskReasonCode.PRICE_IMPACT_UNSAFE,
         severity: RiskSignal.RED,
-        message: 'Extremely high price impact',
-        detail: `Price impact of ${priceImpact.toFixed(2)}% exceeds absolute maximum`,
-        threshold: { used: priceImpact, limit: PRICE_IMPACT_THRESHOLDS.ABSOLUTE_MAX_PCT },
-      });
-    } else if (priceImpact > maxImpact) {
-      reasons.push({
-        code: 'PRICE_IMPACT_HIGH',
-        severity: RiskSignal.AMBER,
         message: 'High price impact',
-        detail: `Price impact of ${priceImpact.toFixed(2)}% exceeds limit for ${request.protectedMode ? 'protected' : 'standard'} mode`,
-        threshold: { used: priceImpact, limit: maxImpact },
+        detail: `Price impact of ${priceImpactPct.toFixed(2)}%`,
+        threshold: {
+          used: priceImpactPct,
+          limit: TRADE_RISK_THRESHOLDS.PRICE_IMPACT_UNSAFE_PCT,
+        },
       });
-    } else if (priceImpact > PRICE_IMPACT_THRESHOLDS.WARNING_PCT) {
+    } else if (priceImpactPct >= TRADE_RISK_THRESHOLDS.PRICE_IMPACT_CAUTION_PCT) {
       reasons.push({
-        code: 'PRICE_IMPACT_WARNING',
-        severity: RiskSignal.GREEN,
-        message: 'Notable price impact',
-        detail: `Price impact of ${priceImpact.toFixed(2)}%`,
-        threshold: { used: priceImpact, limit: PRICE_IMPACT_THRESHOLDS.WARNING_PCT },
+        code: RiskReasonCode.PRICE_IMPACT_CAUTION,
+        severity: RiskSignal.AMBER,
+        message: 'Moderate price impact',
+        detail: `Price impact of ${priceImpactPct.toFixed(2)}%`,
+        threshold: {
+          used: priceImpactPct,
+          limit: TRADE_RISK_THRESHOLDS.PRICE_IMPACT_CAUTION_PCT,
+        },
       });
     }
 
-    // Slippage check
-    const maxSlippage = request.protectedMode
-      ? SLIPPAGE_SETTINGS.PROTECTED_MAX_BPS
-      : SLIPPAGE_SETTINGS.DEFAULT_MAX_BPS;
+    thresholds['slippageCautionBps'] = TRADE_RISK_THRESHOLDS.SLIPPAGE_CAUTION_BPS;
+    thresholds['slippageUnsafeBps'] = TRADE_RISK_THRESHOLDS.SLIPPAGE_UNSAFE_BPS;
 
-    thresholds['slippageLimit'] = maxSlippage;
-
-    if (request.slippageBps > SLIPPAGE_SETTINGS.ABSOLUTE_MAX_BPS) {
+    if (request.slippageBps >= TRADE_RISK_THRESHOLDS.SLIPPAGE_UNSAFE_BPS) {
       reasons.push({
-        code: 'SLIPPAGE_CRITICAL',
+        code: RiskReasonCode.SLIPPAGE_UNSAFE,
         severity: RiskSignal.RED,
-        message: 'Extremely high slippage tolerance',
-        detail: `Slippage of ${request.slippageBps} bps exceeds absolute maximum`,
-        threshold: { used: request.slippageBps, limit: SLIPPAGE_SETTINGS.ABSOLUTE_MAX_BPS },
-      });
-    } else if (request.slippageBps > maxSlippage) {
-      reasons.push({
-        code: 'SLIPPAGE_HIGH',
-        severity: RiskSignal.AMBER,
         message: 'High slippage tolerance',
-        detail: `Slippage of ${request.slippageBps} bps is above recommended`,
-        threshold: { used: request.slippageBps, limit: maxSlippage },
+        detail: `Slippage tolerance of ${(request.slippageBps / 100).toFixed(2)}%`,
+        threshold: {
+          used: request.slippageBps,
+          limit: TRADE_RISK_THRESHOLDS.SLIPPAGE_UNSAFE_BPS,
+        },
+      });
+    } else if (request.slippageBps >= TRADE_RISK_THRESHOLDS.SLIPPAGE_CAUTION_BPS) {
+      reasons.push({
+        code: RiskReasonCode.SLIPPAGE_CAUTION,
+        severity: RiskSignal.AMBER,
+        message: 'Moderate slippage tolerance',
+        detail: `Slippage tolerance of ${(request.slippageBps / 100).toFixed(2)}%`,
+        threshold: {
+          used: request.slippageBps,
+          limit: TRADE_RISK_THRESHOLDS.SLIPPAGE_CAUTION_BPS,
+        },
       });
     }
 
     // Route complexity
     const routeSteps = quote.routePlan?.length || 0;
-    if (routeSteps > 4) {
+    if (routeSteps > TRADE_RISK_THRESHOLDS.ROUTE_HOPS_CAUTION) {
       reasons.push({
-        code: 'COMPLEX_ROUTE',
+        code: RiskReasonCode.ROUTE_COMPLEX,
         severity: RiskSignal.AMBER,
         message: 'Complex multi-hop route',
-        detail: `Route has ${routeSteps} hops, which increases execution risk`,
+        detail: `Route has ${routeSteps} hops`,
       });
     }
   }
@@ -262,34 +329,26 @@ export class RiskScoringService {
   /**
    * Score quote freshness
    */
-  private scoreQuoteFreshness(
-    quoteTimestamp: number | undefined,
-    reasons: RiskReason[],
-    thresholds: Record<string, number>
-  ): number {
+  private scoreQuoteFreshness(quoteTimestamp: number | undefined, reasons: RiskReason[]): number {
     if (!quoteTimestamp) return 0;
 
     const ageSeconds = (Date.now() - quoteTimestamp) / 1000;
-    const maxAge = 30; // 30 seconds
-    const warningAge = 15;
 
-    thresholds['quoteMaxAge'] = maxAge;
-
-    if (ageSeconds > maxAge) {
+    if (ageSeconds >= TRADE_RISK_THRESHOLDS.QUOTE_EXPIRED_SECONDS) {
       reasons.push({
-        code: 'QUOTE_EXPIRED',
+        code: RiskReasonCode.QUOTE_EXPIRED,
         severity: RiskSignal.RED,
-        message: 'Quote has expired',
-        detail: `Quote is ${Math.round(ageSeconds)} seconds old, refresh required`,
-        threshold: { used: ageSeconds, limit: maxAge },
+        message: 'Quote expired',
+        detail: `Quote is ${Math.round(ageSeconds)}s old`,
+        threshold: { used: ageSeconds, limit: TRADE_RISK_THRESHOLDS.QUOTE_EXPIRED_SECONDS },
       });
-    } else if (ageSeconds > warningAge) {
+    } else if (ageSeconds >= TRADE_RISK_THRESHOLDS.QUOTE_STALE_SECONDS) {
       reasons.push({
-        code: 'QUOTE_STALE',
+        code: RiskReasonCode.QUOTE_STALE,
         severity: RiskSignal.AMBER,
-        message: 'Quote is getting stale',
-        detail: `Quote is ${Math.round(ageSeconds)} seconds old`,
-        threshold: { used: ageSeconds, limit: warningAge },
+        message: 'Quote is stale',
+        detail: `Quote is ${Math.round(ageSeconds)}s old`,
+        threshold: { used: ageSeconds, limit: TRADE_RISK_THRESHOLDS.QUOTE_STALE_SECONDS },
       });
     }
 
@@ -299,68 +358,96 @@ export class RiskScoringService {
   /**
    * Score token hygiene
    */
-  private scoreTokenHygiene(
+  private scoreTokenSafety(
     tokenInfo: TokenSafetyInfo | null,
     side: 'input' | 'output',
-    reasons: RiskReason[]
-  ): void {
+    reasons: RiskReason[],
+    protectedMode: boolean
+  ): RiskSignal {
+    const sideLabel = side.charAt(0).toUpperCase() + side.slice(1);
+
     if (!tokenInfo) {
       reasons.push({
-        code: `${side.toUpperCase()}_TOKEN_UNKNOWN`,
+        code: RiskReasonCode.TOKEN_UNKNOWN,
         severity: RiskSignal.AMBER,
         message: `Could not verify ${side} token`,
         detail: 'Token metadata could not be fetched',
       });
-      return;
+      return RiskSignal.AMBER;
     }
 
-    // Blacklist check (RED)
+    // Denylist
     if (tokenInfo.isBlacklisted) {
       reasons.push({
-        code: `${side.toUpperCase()}_TOKEN_BLACKLISTED`,
+        code: RiskReasonCode.TOKEN_BLACKLISTED,
         severity: RiskSignal.RED,
-        message: `${side.charAt(0).toUpperCase() + side.slice(1)} token is blacklisted`,
+        message: `${sideLabel} token is denylisted`,
         detail: 'This token is on the deny list',
       });
-      return;
+      return RiskSignal.RED;
     }
 
-    // Freeze authority (RED in protected, AMBER otherwise)
+    // Allowlist mode
+    if (!tokenInfo.isWhitelisted) {
+      reasons.push({
+        code: RiskReasonCode.TOKEN_NOT_ALLOWLISTED,
+        severity: RiskSignal.AMBER,
+        message: `${sideLabel} token is not allowlisted`,
+        detail: 'Token is not in the allow list',
+      });
+    }
+
+    // Freeze authority is UNSAFE
     if (tokenInfo.hasFreezeAuthority && TOKEN_SAFETY_CHECKS.REJECT_FREEZE_AUTHORITY) {
       reasons.push({
-        code: `${side.toUpperCase()}_HAS_FREEZE_AUTHORITY`,
-        severity: RiskSignal.AMBER,
-        message: `${side.charAt(0).toUpperCase() + side.slice(1)} token has freeze authority`,
-        detail: 'Token can be frozen by authority, use with caution',
+        code: RiskReasonCode.TOKEN_HAS_FREEZE_AUTHORITY,
+        severity: RiskSignal.RED,
+        message: `${sideLabel} token has freeze authority`,
+        detail: 'An authority can freeze transfers',
       });
     }
 
-    // Mint authority (warning)
+    // Mint authority is CAUTION
     if (tokenInfo.hasMintAuthority && TOKEN_SAFETY_CHECKS.WARN_MINT_AUTHORITY) {
       reasons.push({
-        code: `${side.toUpperCase()}_HAS_MINT_AUTHORITY`,
-        severity: RiskSignal.GREEN,
-        message: `${side.charAt(0).toUpperCase() + side.slice(1)} token has mint authority`,
-        detail: 'Token supply can be increased by authority',
+        code: RiskReasonCode.TOKEN_HAS_MINT_AUTHORITY,
+        severity: RiskSignal.AMBER,
+        message: `${sideLabel} token has mint authority`,
+        detail: 'Supply can be increased by an authority',
       });
     }
 
-    // Token-2022 with transfer fees (RED)
+    // Token-2022 handling
     if (tokenInfo.isToken2022 && tokenInfo.hasTransferFee) {
       reasons.push({
-        code: `${side.toUpperCase()}_HAS_TRANSFER_FEE`,
+        code: RiskReasonCode.TOKEN_TOKEN2022_WITH_TRANSFER_FEE,
         severity: RiskSignal.RED,
-        message: `${side.charAt(0).toUpperCase() + side.slice(1)} token has transfer fees`,
-        detail: 'Token-2022 with transfer fee extension may cause unexpected costs',
+        message: `${sideLabel} token has transfer fees (Token-2022)`,
+        detail: 'Transfer fee extension makes output unpredictable',
       });
     } else if (tokenInfo.isToken2022) {
       reasons.push({
-        code: `${side.toUpperCase()}_IS_TOKEN_2022`,
-        severity: RiskSignal.GREEN,
-        message: `${side.charAt(0).toUpperCase() + side.slice(1)} token uses Token-2022`,
-        detail: 'Token-2022 program detected',
+        code: RiskReasonCode.TOKEN_TOKEN2022_UNSUPPORTED,
+        severity: protectedMode ? RiskSignal.RED : RiskSignal.AMBER,
+        message: `${sideLabel} token uses Token-2022`,
+        detail: 'Token-2022 extensions may introduce non-standard behavior',
       });
     }
+
+    // Anti-spoof for major symbols
+    if (tokenInfo.symbol) {
+      const canonical = this.getCanonicalMintForSymbol(tokenInfo.symbol);
+      if (canonical && canonical !== tokenInfo.mint) {
+        reasons.push({
+          code: RiskReasonCode.TOKEN_SPOOFED_SYMBOL,
+          severity: RiskSignal.RED,
+          message: `${sideLabel} token appears spoofed`,
+          detail: `Symbol ${tokenInfo.symbol} does not match canonical mint`,
+        });
+      }
+    }
+
+    return this.calculateOverallLevel(reasons);
   }
 
   /**
@@ -404,20 +491,35 @@ export class RiskScoringService {
   async getTokenSafetyInfo(mint: string): Promise<TokenSafetyInfo | null> {
     // Check cache
     const cached = this.tokenInfoCache.get(mint);
-    if (cached) return cached;
+    if (cached && cached.expiresAt > Date.now()) return cached.info;
 
     try {
       const mintPubkey = new PublicKey(mint);
 
-      // Try to fetch mint info
-      const mintInfo = await getMint(this.connection, mintPubkey);
+      const accountInfo = await this.connection.getAccountInfo(mintPubkey);
+      const owner = accountInfo?.owner;
+      const isToken2022 = owner ? owner.equals(TOKEN_2022_PROGRAM_ID) : false;
+      const programId = isToken2022 ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
+
+      // Fetch mint info from the correct program
+      const mintInfo = await getMint(this.connection, mintPubkey, undefined, programId);
+
+      // Best-effort symbol/name enrichment (cached with the same TTL)
+      const meta = await this.fetchTokenMetadata(mint);
+      const transferFeeConfig = isToken2022 ? getTransferFeeConfig(mintInfo as any) : null;
+      const hasTransferFee =
+        !!transferFeeConfig &&
+        (transferFeeConfig.olderTransferFee.transferFeeBasisPoints > 0 ||
+          transferFeeConfig.newerTransferFee.transferFeeBasisPoints > 0);
 
       const info: TokenSafetyInfo = {
         mint,
+        symbol: meta?.symbol,
+        name: meta?.name,
         hasFreezeAuthority: mintInfo.freezeAuthority !== null,
         hasMintAuthority: mintInfo.mintAuthority !== null,
-        isToken2022: false, // Would need to check program ID
-        hasTransferFee: false, // Would need to check extensions
+        isToken2022,
+        hasTransferFee,
         decimals: mintInfo.decimals,
         isKnownToken: this.isKnownToken(mint),
         isBlacklisted: TOKEN_BLACKLIST.includes(mint),
@@ -425,8 +527,7 @@ export class RiskScoringService {
       };
 
       // Cache the result
-      this.tokenInfoCache.set(mint, info);
-      setTimeout(() => this.tokenInfoCache.delete(mint), this.CACHE_TTL);
+      this.tokenInfoCache.set(mint, { info, expiresAt: Date.now() + this.CACHE_TTL_MS });
 
       return info;
     } catch (error) {
@@ -439,7 +540,55 @@ export class RiskScoringService {
    * Check if token is in known tokens list
    */
   private isKnownToken(mint: string): boolean {
-    return Object.values(KNOWN_TOKENS).includes(mint as any);
+    const network = config.solana.network;
+    const known = network === 'devnet' ? DEVNET_TOKENS : KNOWN_TOKENS;
+    return Object.values(known).includes(mint as any);
+  }
+
+  private getCanonicalMintForSymbol(symbol: string): string | null {
+    const sym = symbol.trim().toUpperCase();
+    const network = config.solana.network;
+    const known = network === 'devnet' ? DEVNET_TOKENS : KNOWN_TOKENS;
+
+    if (sym === 'SOL' || sym === 'WSOL') return known.WSOL;
+    if (sym === 'USDC') return (known as any).USDC ?? null;
+    if (sym === 'USDT') return (known as any).USDT ?? null;
+    if (sym === 'JUP') return (known as any).JUP ?? null;
+    if (sym === 'BONK') return (known as any).BONK ?? null;
+    return null;
+  }
+
+  private async fetchTokenMetadata(
+    mint: string
+  ): Promise<{ symbol?: string; name?: string } | null> {
+    // Quick path for canonical tokens
+    const network = config.solana.network;
+    const known = network === 'devnet' ? DEVNET_TOKENS : KNOWN_TOKENS;
+    const entries = Object.entries(known) as Array<[string, string]>;
+    const knownMatch = entries.find(([_sym, addr]) => addr === mint);
+    if (knownMatch) {
+      const [sym] = knownMatch;
+      return { symbol: sym, name: sym };
+    }
+
+    // Best-effort DexScreener lookup (fast timeout, non-blocking failure)
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2000);
+      const resp = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mint}`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (!resp.ok) return null;
+      const data: any = await resp.json();
+      const pair = Array.isArray(data?.pairs) ? data.pairs[0] : null;
+      const baseToken = pair?.baseToken;
+      if (!baseToken) return null;
+      return { symbol: baseToken.symbol, name: baseToken.name };
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -474,6 +623,50 @@ export class RiskScoringService {
     if (hasRed) return RiskSignal.RED;
     if (hasAmber) return RiskSignal.AMBER;
     return RiskSignal.GREEN;
+  }
+
+  private maxLevel(a: RiskSignal, b: RiskSignal): RiskSignal {
+    if (a === RiskSignal.RED || b === RiskSignal.RED) return RiskSignal.RED;
+    if (a === RiskSignal.AMBER || b === RiskSignal.AMBER) return RiskSignal.AMBER;
+    return RiskSignal.GREEN;
+  }
+
+  private getQuotePriceImpactPct(quote: QuoteResponse): number {
+    // Jupiter returns priceImpactPct as a fraction (e.g. "0.0123" == 1.23%)
+    const raw = Number(quote.priceImpactPct);
+    if (!Number.isFinite(raw)) return 0;
+    return raw * 100;
+  }
+
+  private computeProtectedBlocking(params: {
+    protectedMode: boolean;
+    overallLevel: RiskSignal;
+    tokenSafetyLevel: RiskSignal;
+    tradeRiskLevel: RiskSignal;
+    slippageBps: number;
+    priceImpactPct: number;
+    quoteAgeSeconds: number;
+    reasons: RiskReason[];
+  }): boolean {
+    if (!params.protectedMode) return false;
+    if (params.overallLevel === RiskSignal.RED) return true;
+
+    // For CAUTION in protected mode, enforce strict ceilings.
+    if (params.overallLevel === RiskSignal.AMBER) {
+      if (params.slippageBps > SLIPPAGE_SETTINGS.PROTECTED_MAX_BPS) return true;
+      if (params.priceImpactPct > PRICE_IMPACT_THRESHOLDS.MAX_PROTECTED_PCT) return true;
+      if (params.quoteAgeSeconds > TRADE_RISK_THRESHOLDS.QUOTE_STALE_SECONDS) return true;
+
+      // Block specific token-related cautions in protected mode.
+      const blockedCodes = new Set<RiskReasonCode>([
+        RiskReasonCode.TOKEN_UNKNOWN,
+        RiskReasonCode.TOKEN_NOT_ALLOWLISTED,
+        RiskReasonCode.TOKEN_TOKEN2022_UNSUPPORTED,
+      ]);
+      if (params.reasons.some(r => blockedCodes.has(r.code as RiskReasonCode))) return true;
+    }
+
+    return false;
   }
 
   /**

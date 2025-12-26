@@ -10,10 +10,9 @@ import {
   ProtectedToggle,
   ExecutionStatus,
   type RiskLevel,
-  type RiskReason,
   type ExecutionStep,
 } from '@/components/risk';
-import { apiClient, type TokenInfo } from '@/lib/api';
+import { apiClient, type QuoteResponse, type QuoteWithRisk, type TokenInfo } from '@/lib/api';
 
 import { ExecutionProfileSelector, type ExecutionProfile } from './ExecutionProfileSelector';
 import { ReceiptModal } from './ReceiptModal';
@@ -82,27 +81,35 @@ export function SwapForm() {
 
   // Fetch quote
   const {
-    data: quote,
+    data: quoteData,
     isLoading: isQuoteLoading,
     error: quoteError,
-  } = useQuery({
-    queryKey: ['quote', inputToken.mint, outputToken.mint, debouncedAmount],
+  } = useQuery<QuoteWithRisk | null>({
+    queryKey: ['quote', inputToken.mint, outputToken.mint, debouncedAmount, slippage, protectedMode],
     queryFn: async () => {
       if (!debouncedAmount || parseFloat(debouncedAmount) <= 0) {
         return null;
       }
       const amountInLamports = Math.floor(parseFloat(debouncedAmount) * 10 ** inputToken.decimals);
-      return apiClient.getQuote({
+      return apiClient.getQuoteWithRisk({
         inputMint: inputToken.mint,
         outputMint: outputToken.mint,
         amount: amountInLamports,
         slippageBps: slippage,
+        protectedMode,
       });
     },
     enabled: !!debouncedAmount && parseFloat(debouncedAmount) > 0,
     staleTime: 10000, // 10 seconds
     refetchInterval: 15000, // Refresh every 15 seconds
   });
+
+  const quote: QuoteResponse | null = quoteData?.quote ?? null;
+  const riskAssessment = quoteData?.riskAssessment;
+
+  useEffect(() => {
+    setRiskAcknowledged(false);
+  }, [quoteData?.quoteTimestamp]);
 
   // Execute swap mutation
   const swapMutation = useMutation({
@@ -191,68 +198,23 @@ export function SwapForm() {
   const priceImpactPct = safeParseNumber(quote?.priceImpactPct);
   const priceImpact = priceImpactPct !== null ? (priceImpactPct * 100).toFixed(2) : null;
 
-  // Calculate risk level based on quote
-  const calculateRiskLevel = (): RiskLevel => {
-    if (!quote) return 'GREEN';
-    const impactPct = safeParseNumber(quote.priceImpactPct);
-    const impact = impactPct === null ? 0 : impactPct * 100;
-    if (impact > 3 || slippage > 300) return 'RED';
-    if (impact > 1 || slippage > 100) return 'AMBER';
-    return 'GREEN';
+  const severityToTextClass = (severity: RiskLevel | undefined): string => {
+    if (severity === 'RED') return 'text-red-500';
+    if (severity === 'AMBER') return 'text-yellow-500';
+    return 'text-green-500';
   };
 
-  const riskLevel = calculateRiskLevel();
+  const riskLevel: RiskLevel = (riskAssessment?.level as RiskLevel) ?? 'GREEN';
+  const riskReasons = riskAssessment?.reasons ?? [];
+  const requiresAcknowledgement = riskAssessment?.requiresAcknowledgement ?? false;
+  const isBlocked = riskAssessment?.blockedInProtectedMode ?? false;
 
-  // Build risk reasons for display
-  const buildRiskReasons = (): RiskReason[] => {
-    const reasons: RiskReason[] = [];
-    if (!quote) return reasons;
-
-    const impactPct = safeParseNumber(quote.priceImpactPct);
-    const impact = impactPct === null ? 0 : impactPct * 100;
-
-    if (impact > 3) {
-      reasons.push({
-        code: 'HIGH_PRICE_IMPACT',
-        severity: 'RED',
-        message: `Price impact is ${impact.toFixed(2)}%, which exceeds the 3% threshold`,
-      });
-    } else if (impact > 1) {
-      reasons.push({
-        code: 'MODERATE_PRICE_IMPACT',
-        severity: 'AMBER',
-        message: `Price impact of ${impact.toFixed(2)}% is notable`,
-      });
-    }
-
-    if (slippage > 300) {
-      reasons.push({
-        code: 'HIGH_SLIPPAGE',
-        severity: 'RED',
-        message: `Slippage tolerance of ${slippage / 100}% is very high`,
-      });
-    } else if (slippage > 100) {
-      reasons.push({
-        code: 'MODERATE_SLIPPAGE',
-        severity: 'AMBER',
-        message: `Slippage tolerance of ${slippage / 100}% is above normal`,
-      });
-    }
-
-    if (quote.routePlan?.length > 3) {
-      reasons.push({
-        code: 'COMPLEX_ROUTE',
-        severity: 'AMBER',
-        message: `Route has ${quote.routePlan.length} steps, which may increase fees`,
-      });
-    }
-
-    return reasons;
-  };
-
-  const riskReasons = buildRiskReasons();
-  const requiresAcknowledgement = riskLevel === 'AMBER' && !protectedMode;
-  const isBlocked = riskLevel === 'RED' && protectedMode;
+  const priceImpactReason = riskReasons.find(
+    r => r.code === 'PRICE_IMPACT_UNSAFE' || r.code === 'PRICE_IMPACT_CAUTION'
+  );
+  const slippageReason = riskReasons.find(
+    r => r.code === 'SLIPPAGE_UNSAFE' || r.code === 'SLIPPAGE_CAUTION'
+  );
 
   return (
     <div className="card">
@@ -407,21 +369,23 @@ export function SwapForm() {
             <div className="mt-2 flex justify-between">
               <span className="text-surface-600 dark:text-surface-400">Price Impact</span>
               <span
-                className={
-                  parseFloat(priceImpact) > 1
-                    ? 'text-red-500'
-                    : parseFloat(priceImpact) > 0.3
-                      ? 'text-yellow-500'
-                      : 'text-green-500'
-                }
+                className={severityToTextClass(priceImpactReason?.severity)}
               >
                 {priceImpact}%
+                {priceImpactReason?.threshold?.limit !== undefined
+                  ? ` (limit ${priceImpactReason.threshold.limit.toFixed(2)}%)`
+                  : ''}
               </span>
             </div>
           )}
           <div className="text-surface-600 dark:text-surface-400 mt-2 flex justify-between">
             <span>Slippage</span>
-            <span>{slippage / 100}%</span>
+            <span className={severityToTextClass(slippageReason?.severity)}>
+              {slippage / 100}%
+              {slippageReason?.threshold?.limit !== undefined
+                ? ` (limit ${(slippageReason.threshold.limit / 100).toFixed(2)}%)`
+                : ''}
+            </span>
           </div>
         </div>
       )}

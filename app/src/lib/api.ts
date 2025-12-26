@@ -69,6 +69,33 @@ export interface QuoteResponse {
   }>;
 }
 
+export type RiskSignal = 'GREEN' | 'AMBER' | 'RED';
+
+export interface RiskReason {
+  code: string;
+  severity: RiskSignal;
+  message: string;
+  detail?: string;
+  threshold?: { used: number; limit: number };
+}
+
+export interface RiskAssessment {
+  level: RiskSignal;
+  tokenSafetyLevel?: RiskSignal;
+  tradeRiskLevel?: RiskSignal;
+  reasons: RiskReason[];
+  blockedInProtectedMode: boolean;
+  requiresAcknowledgement: boolean;
+  quoteAgeSeconds: number;
+  timestamp: number;
+}
+
+export interface QuoteWithRisk {
+  quote: QuoteResponse;
+  quoteTimestamp: number;
+  riskAssessment: RiskAssessment;
+}
+
 export interface SwapRequest {
   userPublicKey: string;
   inputMint: string;
@@ -218,6 +245,19 @@ class ApiClient {
       outputMint: params.outputMint,
       amount: params.amount.toString(),
       slippageBps: (params.slippageBps || 50).toString(),
+    });
+
+    return this.request(`${API_PREFIX}/swap/quote?${queryParams}`);
+  }
+
+  async getQuoteWithRisk(params: QuoteRequest & { protectedMode: boolean }): Promise<QuoteWithRisk> {
+    const queryParams = new URLSearchParams({
+      inputMint: params.inputMint,
+      outputMint: params.outputMint,
+      amount: params.amount.toString(),
+      slippageBps: (params.slippageBps || 50).toString(),
+      protectedMode: String(params.protectedMode),
+      includeRisk: 'true',
     });
 
     return this.request(`${API_PREFIX}/swap/quote?${queryParams}`);

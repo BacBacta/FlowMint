@@ -316,8 +316,19 @@ export class JupiterService {
       const response = await this.client.post<SwapResponse>('swap', body);
 
       if (response.data.simulationError) {
+        // simulationError can be an object or string - stringify for proper display
+        const errorDetail =
+          typeof response.data.simulationError === 'string'
+            ? response.data.simulationError
+            : JSON.stringify(response.data.simulationError);
+
+        this.log.warn(
+          { simulationError: response.data.simulationError },
+          'Swap simulation failed'
+        );
+
         throw new JupiterError(
-          `Swap simulation failed: ${response.data.simulationError}`,
+          `Swap simulation failed: ${errorDetail}`,
           'SIMULATION_FAILED',
           undefined,
           response.data

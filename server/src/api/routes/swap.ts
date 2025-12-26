@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { DatabaseService } from '../../db/database.js';
 import { ExecutionEngine } from '../../services/executionEngine.js';
 import { jupiterService, JupiterError } from '../../services/jupiterService.js';
+import { riskScoringService } from '../../services/riskScoring.js';
 import { logger } from '../../utils/logger.js';
 
 const log = logger.child({ route: 'swap' });
@@ -30,6 +31,8 @@ const quoteRequestSchema = z.object({
   amount: z.string().regex(/^\d+$/),
   slippageBps: z.number().min(1).max(5000),
   swapMode: z.enum(['ExactIn', 'ExactOut']).optional(),
+  protectedMode: z.boolean().optional(),
+  includeRisk: z.boolean().optional(),
 });
 
 const executeSwapSchema = z.object({
@@ -69,6 +72,12 @@ export function createSwapRoutes(db: DatabaseService): Router {
         amount: req.query.amount,
         slippageBps: parseInt(req.query.slippageBps as string, 10),
         swapMode: req.query.swapMode,
+        protectedMode:
+          typeof req.query.protectedMode === 'string'
+            ? req.query.protectedMode === 'true'
+            : undefined,
+        includeRisk:
+          typeof req.query.includeRisk === 'string' ? req.query.includeRisk === 'true' : undefined,
       });
 
       log.info({ query }, 'Quote request');
@@ -80,6 +89,30 @@ export function createSwapRoutes(db: DatabaseService): Router {
         slippageBps: query.slippageBps,
         swapMode: query.swapMode,
       });
+
+      if (query.includeRisk) {
+        const quoteTimestamp = Date.now();
+        const riskAssessment = await riskScoringService.scoreSwap(
+          {
+            inputMint: query.inputMint,
+            outputMint: query.outputMint,
+            amountIn: query.amount,
+            slippageBps: query.slippageBps,
+            protectedMode: query.protectedMode ?? false,
+            quoteTimestamp,
+          },
+          quote
+        );
+
+        return res.json({
+          success: true,
+          data: {
+            quote,
+            quoteTimestamp,
+            riskAssessment,
+          },
+        });
+      }
 
       res.json({
         success: true,

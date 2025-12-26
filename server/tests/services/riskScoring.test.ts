@@ -4,168 +4,190 @@
  * Tests for the risk assessment service.
  */
 
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, jest, afterEach } from '@jest/globals';
 import { RiskScoringService, RiskSignal } from '../../src/services/riskScoring';
 
-// Mock Connection to avoid network calls
-jest.mock('@solana/web3.js', () => ({
-  Connection: jest.fn().mockImplementation(() => ({
-    getAccountInfo: jest.fn().mockResolvedValue(null),
-    getTokenSupply: jest.fn().mockResolvedValue({ value: { uiAmount: 1000000 } }),
-    getTokenLargestAccounts: jest.fn().mockResolvedValue({ value: [] }),
-  })),
-  PublicKey: jest.fn().mockImplementation((key: string) => ({
-    toBase58: () => key,
-    toString: () => key,
-  })),
-}));
+const makeTokenSafety = (overrides = {}) => ({
+  mint: overrides.mint ?? 'So11111111111111111111111111111111111111112',
+  symbol: overrides.symbol,
+  name: overrides.name,
+  hasFreezeAuthority: overrides.hasFreezeAuthority ?? false,
+  hasMintAuthority: overrides.hasMintAuthority ?? false,
+  isToken2022: overrides.isToken2022 ?? false,
+  hasTransferFee: overrides.hasTransferFee ?? false,
+  decimals: overrides.decimals ?? 6,
+  isKnownToken: overrides.isKnownToken ?? true,
+  isBlacklisted: overrides.isBlacklisted ?? false,
+  isWhitelisted: overrides.isWhitelisted ?? true,
+});
+
+const makeQuote = (overrides = {}) => ({
+  inputMint: overrides.inputMint ?? 'So11111111111111111111111111111111111111112',
+  outputMint: overrides.outputMint ?? 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+  inAmount: overrides.inAmount ?? '1000000000',
+  outAmount: overrides.outAmount ?? '1000000',
+  otherAmountThreshold: overrides.otherAmountThreshold ?? '990000',
+  // Jupiter returns a fraction: "0.02" => 2%
+  priceImpactPct: overrides.priceImpactPct ?? '0.0001',
+  routePlan: overrides.routePlan ?? [{ swapInfo: { ammKey: 'test', label: 'test' } }],
+  swapMode: overrides.swapMode ?? 'ExactIn',
+  slippageBps: overrides.slippageBps ?? 50,
+});
+
+const makeRequest = (overrides = {}) => ({
+  inputMint: overrides.inputMint ?? 'So11111111111111111111111111111111111111112',
+  outputMint: overrides.outputMint ?? 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+  amountIn: overrides.amountIn ?? '1000000000',
+  slippageBps: overrides.slippageBps ?? 50,
+  protectedMode: overrides.protectedMode ?? false,
+  quoteTimestamp: overrides.quoteTimestamp,
+});
 
 describe('RiskScoringService', () => {
-  let service: RiskScoringService;
+  let service;
 
   beforeEach(() => {
     service = new RiskScoringService();
   });
 
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
   describe('scoreSwap', () => {
-    it('should return green for low-risk swap', async () => {
-      const request = {
-        inputMint: 'So11111111111111111111111111111111111111112',
-        outputMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-        amount: 1000000000,
-        protectedMode: false,
-        quoteTimestamp: Date.now() - 1000, // 1 second old
-      };
+    it('flags freeze authority as UNSAFE (RED)', async () => {
+      jest.spyOn(service, 'getTokenSafetyInfo')
+        .mockResolvedValueOnce(makeTokenSafety({ hasFreezeAuthority: true, mint: 'mintA' }))
+        .mockResolvedValueOnce(makeTokenSafety({ mint: 'mintB' }));
 
-      const quote = {
-        inputMint: 'So11111111111111111111111111111111111111112',
-        outputMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-        inAmount: '1000000000',
-        outAmount: '100000000',
-        otherAmountThreshold: '99500000',
-        priceImpactPct: '0.1', // Low
-        slippageBps: 50,
-        routePlan: [{ swapInfo: { ammKey: 'test' } }],
-      };
+      const now = Date.now();
+      const request = makeRequest({ quoteTimestamp: now });
+      const quote = makeQuote({ priceImpactPct: '0.0001' });
 
-      const result = await service.scoreSwap(request as any, quote as any);
+      const result = await service.scoreSwap(request, quote);
 
-      // May return GREEN or AMBER depending on token safety checks
-      expect([RiskSignal.GREEN, RiskSignal.AMBER]).toContain(result.level);
+      expect(result.level).toBe(RiskSignal.RED);
+      expect(result.reasons.some(r => r.code === 'TOKEN_HAS_FREEZE_AUTHORITY' && r.severity === 'RED')).toBe(true);
+    });
+
+    it('flags mint authority as CAUTION (AMBER)', async () => {
+      jest.spyOn(service, 'getTokenSafetyInfo')
+        .mockResolvedValueOnce(makeTokenSafety({ hasMintAuthority: true, mint: 'mintA' }))
+        .mockResolvedValueOnce(makeTokenSafety({ mint: 'mintB' }));
+
+      const request = makeRequest({ quoteTimestamp: Date.now() });
+      const quote = makeQuote({ priceImpactPct: '0.0001' });
+
+      const result = await service.scoreSwap(request, quote);
+
+      expect(result.level).toBe(RiskSignal.AMBER);
+      expect(result.reasons.some(r => r.code === 'TOKEN_HAS_MINT_AUTHORITY' && r.severity === 'AMBER')).toBe(true);
       expect(result.blockedInProtectedMode).toBe(false);
     });
 
-    it('should return amber for medium-risk swap', async () => {
-      const request = {
-        inputMint: 'So11111111111111111111111111111111111111112',
-        outputMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-        amount: 10000000000,
-        protectedMode: false,
-        quoteTimestamp: Date.now() - 5000, // 5 seconds old
-      };
+    it('flags Token-2022 transfer fee as UNSAFE (RED)', async () => {
+      jest.spyOn(service, 'getTokenSafetyInfo')
+        .mockResolvedValueOnce(makeTokenSafety({ isToken2022: true, hasTransferFee: true, mint: 'mintA' }))
+        .mockResolvedValueOnce(makeTokenSafety({ mint: 'mintB' }));
 
-      const quote = {
-        inputMint: 'So11111111111111111111111111111111111111112',
-        outputMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-        inAmount: '10000000000',
-        outAmount: '1000000000',
-        otherAmountThreshold: '970000000',
-        priceImpactPct: '1.5', // Medium
-        slippageBps: 100,
-        routePlan: [
-          { swapInfo: { ammKey: 'test1' } },
-          { swapInfo: { ammKey: 'test2' } },
-        ],
-      };
+      const request = makeRequest({ quoteTimestamp: Date.now(), protectedMode: false });
+      const quote = makeQuote({ priceImpactPct: '0.0001' });
 
-      const result = await service.scoreSwap(request as any, quote as any);
-
-      expect([RiskSignal.AMBER, RiskSignal.GREEN]).toContain(result.level);
+      const result = await service.scoreSwap(request, quote);
+      expect(result.level).toBe(RiskSignal.RED);
+      expect(result.reasons.some(r => r.code === 'TOKEN_TOKEN2022_WITH_TRANSFER_FEE' && r.severity === 'RED')).toBe(true);
     });
 
-    it('should return red for high-risk swap', async () => {
-      const request = {
-        inputMint: 'So11111111111111111111111111111111111111112',
-        outputMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-        amount: 1000000000000, // Very large
-        protectedMode: false,
-        quoteTimestamp: Date.now() - 30000, // 30 seconds old
-      };
+    it('flags Token-2022 without transfer fee as CAUTION (AMBER) in normal mode', async () => {
+      jest.spyOn(service, 'getTokenSafetyInfo')
+        .mockResolvedValueOnce(makeTokenSafety({ isToken2022: true, hasTransferFee: false, mint: 'mintA' }))
+        .mockResolvedValueOnce(makeTokenSafety({ mint: 'mintB' }));
 
-      const quote = {
-        inputMint: 'So11111111111111111111111111111111111111112',
-        outputMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-        inAmount: '1000000000000',
-        outAmount: '90000000000',
-        otherAmountThreshold: '80000000000',
-        priceImpactPct: '10.0', // Very high
-        slippageBps: 500,
-        routePlan: [
-          { swapInfo: { ammKey: 'test1' } },
-          { swapInfo: { ammKey: 'test2' } },
-          { swapInfo: { ammKey: 'test3' } },
-          { swapInfo: { ammKey: 'test4' } },
-        ],
-      };
+      const request = makeRequest({ quoteTimestamp: Date.now(), protectedMode: false });
+      const quote = makeQuote({ priceImpactPct: '0.0001' });
 
-      const result = await service.scoreSwap(request as any, quote as any);
+      const result = await service.scoreSwap(request, quote);
+
+      expect(result.level).toBe(RiskSignal.AMBER);
+      expect(
+        result.reasons.some(r => r.code === 'TOKEN_TOKEN2022_UNSUPPORTED' && r.severity === 'AMBER')
+      ).toBe(true);
+      expect(result.blockedInProtectedMode).toBe(false);
+    });
+
+    it('flags Token-2022 without transfer fee as UNSAFE (RED) in protected mode', async () => {
+      jest.spyOn(service, 'getTokenSafetyInfo')
+        .mockResolvedValueOnce(makeTokenSafety({ isToken2022: true, hasTransferFee: false, mint: 'mintA' }))
+        .mockResolvedValueOnce(makeTokenSafety({ mint: 'mintB' }));
+
+      const request = makeRequest({ quoteTimestamp: Date.now(), protectedMode: true });
+      const quote = makeQuote({ priceImpactPct: '0.0001' });
+
+      const result = await service.scoreSwap(request, quote);
 
       expect(result.level).toBe(RiskSignal.RED);
+      expect(
+        result.reasons.some(r => r.code === 'TOKEN_TOKEN2022_UNSUPPORTED' && r.severity === 'RED')
+      ).toBe(true);
       expect(result.blockedInProtectedMode).toBe(true);
     });
 
-    it('should include risk reasons', async () => {
-      const request = {
-        inputMint: 'So11111111111111111111111111111111111111112',
-        outputMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-        amount: 100000000000,
-        protectedMode: false,
-        quoteTimestamp: Date.now() - 15000,
-      };
+    it('adds QUOTE_STALE at >= 15s and blocks in protected mode', async () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2025-01-01T00:00:20.000Z'));
 
-      const quote = {
-        inputMint: 'So11111111111111111111111111111111111111112',
-        outputMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-        inAmount: '100000000000',
-        outAmount: '9000000000',
-        otherAmountThreshold: '8500000000',
-        priceImpactPct: '5.0',
-        slippageBps: 200,
-        routePlan: [{ swapInfo: { ammKey: 'test' } }],
-      };
+      jest.spyOn(service, 'getTokenSafetyInfo')
+        .mockResolvedValueOnce(makeTokenSafety({ mint: 'mintA' }))
+        .mockResolvedValueOnce(makeTokenSafety({ mint: 'mintB' }));
 
-      const result = await service.scoreSwap(request as any, quote as any);
+      const now = Date.now();
+      const request = makeRequest({ quoteTimestamp: now - 16_000, protectedMode: true });
+      const quote = makeQuote({ priceImpactPct: '0.0001' });
 
-      expect(result.reasons.length).toBeGreaterThan(0);
-      expect(result.timestamp).toBeDefined();
+      const result = await service.scoreSwap(request, quote);
+
+      expect(result.reasons.some(r => r.code === 'QUOTE_STALE' && r.severity === 'AMBER')).toBe(true);
+      expect(result.level).toBe(RiskSignal.AMBER);
+      expect(result.blockedInProtectedMode).toBe(true);
     });
 
-    it('should block amber in protected mode', async () => {
-      const request = {
-        inputMint: 'So11111111111111111111111111111111111111112',
-        outputMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-        amount: 10000000000,
-        protectedMode: true, // Protected mode ON
-        quoteTimestamp: Date.now() - 5000,
-      };
+    it('adds QUOTE_EXPIRED at >= 30s (RED)', async () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2025-01-01T00:00:40.000Z'));
 
-      const quote = {
-        inputMint: 'So11111111111111111111111111111111111111112',
-        outputMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-        inAmount: '10000000000',
-        outAmount: '1000000000',
-        otherAmountThreshold: '900000000',
-        priceImpactPct: '2.5', // Triggers amber
-        slippageBps: 150,
-        routePlan: [{ swapInfo: { ammKey: 'test' } }],
-      };
+      jest.spyOn(service, 'getTokenSafetyInfo')
+        .mockResolvedValueOnce(makeTokenSafety({ mint: 'mintA' }))
+        .mockResolvedValueOnce(makeTokenSafety({ mint: 'mintB' }));
 
-      const result = await service.scoreSwap(request as any, quote as any);
+      const now = Date.now();
+      const request = makeRequest({ quoteTimestamp: now - 31_000, protectedMode: false });
+      const quote = makeQuote({ priceImpactPct: '0.0001' });
 
-      // In protected mode, amber and red are blocked
-      if (result.level === RiskSignal.AMBER || result.level === RiskSignal.RED) {
-        expect(result.blockedInProtectedMode).toBe(true);
-      }
+      const result = await service.scoreSwap(request, quote);
+
+      expect(result.level).toBe(RiskSignal.RED);
+      expect(result.reasons.some(r => r.code === 'QUOTE_EXPIRED' && r.severity === 'RED')).toBe(true);
+    });
+
+    it('applies composition rule: not allowlisted token + non-green trade risk => RED', async () => {
+      // Make token "unknown" by marking it as not allowlisted
+      jest.spyOn(service, 'getTokenSafetyInfo')
+        .mockResolvedValueOnce(makeTokenSafety({ isWhitelisted: false, isKnownToken: false, mint: 'mintA' }))
+        .mockResolvedValueOnce(makeTokenSafety({ mint: 'mintB' }));
+
+      const request = makeRequest({ quoteTimestamp: Date.now(), protectedMode: false, slippageBps: 50 });
+      // 3% price impact => CAUTION (AMBER)
+      const quote = makeQuote({ priceImpactPct: '0.03' });
+
+      const result = await service.scoreSwap(request, quote);
+
+      expect(result.level).toBe(RiskSignal.RED);
+      expect(result.reasons.some(r => r.code === 'TOKEN_NOT_ALLOWLISTED')).toBe(true);
+      expect(result.reasons.some(r => r.code === 'PRICE_IMPACT_CAUTION')).toBe(true);
+      expect(result.reasons.some(r => r.code === 'TOKEN_UNKNOWN_AND_TRADE_RISKY' && r.severity === 'RED')).toBe(true);
+      // Not protected => blocked flag should remain false
+      expect(result.blockedInProtectedMode).toBe(false);
     });
   });
 

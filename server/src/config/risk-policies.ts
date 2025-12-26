@@ -88,17 +88,33 @@ export const SLIPPAGE_SETTINGS = {
  * Price impact thresholds
  */
 export const PRICE_IMPACT_THRESHOLDS = {
-  /** Warning threshold (0.5%) */
-  WARNING_PCT: 0.5,
+  /** Safe threshold (2%) */
+  WARNING_PCT: 2.0,
 
-  /** Maximum for normal mode (1%) */
-  MAX_NORMAL_PCT: 1.0,
+  /** Maximum for normal mode (5%) */
+  MAX_NORMAL_PCT: 5.0,
 
-  /** Maximum for protected mode (0.3%) */
-  MAX_PROTECTED_PCT: 0.3,
+  /** Maximum for protected mode (2%) */
+  MAX_PROTECTED_PCT: 2.0,
 
   /** Absolute maximum allowed (5%) */
   ABSOLUTE_MAX_PCT: 5.0,
+} as const;
+
+/**
+ * Unified trade risk thresholds (MVP production)
+ * These are expressed in user-facing units:
+ * - priceImpactPct is in percent (e.g., 4.2 for 4.2%)
+ * - slippageBps is in bps (e.g., 200 for 2%)
+ */
+export const TRADE_RISK_THRESHOLDS = {
+  PRICE_IMPACT_CAUTION_PCT: 2.0,
+  PRICE_IMPACT_UNSAFE_PCT: 5.0,
+  SLIPPAGE_CAUTION_BPS: 200,
+  SLIPPAGE_UNSAFE_BPS: 500,
+  QUOTE_STALE_SECONDS: 15,
+  QUOTE_EXPIRED_SECONDS: 30,
+  ROUTE_HOPS_CAUTION: 4,
 } as const;
 
 /**
