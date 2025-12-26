@@ -285,19 +285,35 @@ export class JupiterService {
     this.log.debug({ userPublicKey: request.userPublicKey }, 'Getting swap transaction');
 
     try {
-      // Same rule as above: keep this relative so baseURL's "/v6" is preserved.
-      const response = await this.client.post<SwapResponse>('swap', {
+      // Build request body - computeUnitPriceMicroLamports and prioritizationFeeLamports
+      // are mutually exclusive in Jupiter API v6
+      const body: Record<string, unknown> = {
         quoteResponse: request.quoteResponse,
         userPublicKey: request.userPublicKey,
         wrapAndUnwrapSol: request.wrapAndUnwrapSol ?? true,
-        feeAccount: request.feeAccount,
-        trackingAccount: request.trackingAccount,
-        computeUnitPriceMicroLamports: request.computeUnitPriceMicroLamports,
-        prioritizationFeeLamports: request.prioritizationFeeLamports ?? 'auto',
         useSharedAccounts: request.useSharedAccounts ?? true,
         dynamicComputeUnitLimit: request.dynamicComputeUnitLimit ?? true,
         skipUserAccountsRpcCalls: request.skipUserAccountsRpcCalls ?? false,
-      });
+      };
+
+      // Add optional fields
+      if (request.feeAccount) {
+        body.feeAccount = request.feeAccount;
+      }
+      if (request.trackingAccount) {
+        body.trackingAccount = request.trackingAccount;
+      }
+
+      // Only one of these can be set - prefer prioritizationFeeLamports with 'auto'
+      if (request.computeUnitPriceMicroLamports !== undefined) {
+        body.computeUnitPriceMicroLamports = request.computeUnitPriceMicroLamports;
+      } else {
+        // Use auto priority fee by default
+        body.prioritizationFeeLamports = request.prioritizationFeeLamports ?? 'auto';
+      }
+
+      // Same rule as above: keep this relative so baseURL's "/v6" is preserved.
+      const response = await this.client.post<SwapResponse>('swap', body);
 
       if (response.data.simulationError) {
         throw new JupiterError(
