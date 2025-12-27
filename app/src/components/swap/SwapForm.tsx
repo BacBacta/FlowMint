@@ -1,6 +1,7 @@
 'use client';
 
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+import { VersionedTransaction } from '@solana/web3.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
@@ -43,7 +44,7 @@ const POPULAR_TOKENS = [
 
 export function SwapForm() {
   const { publicKey, signTransaction } = useWallet();
-  const { connection: _connection } = useConnection();
+  const { connection } = useConnection();
   const queryClient = useQueryClient();
 
   const [customTokens, setCustomTokens] = useState(POPULAR_TOKENS);
@@ -205,7 +206,7 @@ export function SwapForm() {
       );
 
       try {
-        const swapTx = await apiClient.executeSwap({
+        const swapResult = await apiClient.executeSwap({
           userPublicKey: publicKey.toBase58(),
           inputMint: inputToken.mint,
           outputMint: outputToken.mint,
@@ -214,14 +215,42 @@ export function SwapForm() {
           protectedMode,
         });
 
-        console.log('[SwapForm] ✅ Swap transaction received:', {
-          success: swapTx.success,
-          signature: swapTx.signature,
-          receiptId: swapTx.receipt?.id,
-          error: swapTx.error,
+        console.log('[SwapForm] ✅ Swap transaction received from server:', {
+          receiptId: (swapResult as any).receiptId,
+          status: (swapResult as any).status,
+          hasTransaction: !!(swapResult as any).transaction,
+          lastValidBlockHeight: (swapResult as any).lastValidBlockHeight,
         });
 
-        // Update execution steps after successful submission
+        // Check if we got a transaction to sign
+        const txBase64 = (swapResult as any).transaction;
+        if (!txBase64) {
+          throw new Error('No transaction returned from server');
+        }
+
+        // Deserialize the transaction
+        console.log('[SwapForm] Step 2: Deserializing transaction...');
+        const txBuffer = Buffer.from(txBase64, 'base64');
+        const transaction = VersionedTransaction.deserialize(txBuffer);
+        console.log('[SwapForm] Transaction deserialized, signatures required:', transaction.message.header.numRequiredSignatures);
+
+        // Sign the transaction
+        console.log('[SwapForm] Step 3: Requesting wallet signature...');
+        setExecutionSteps(prev =>
+          prev.map(s =>
+            s.id === 'prepare'
+              ? { ...s, status: 'completed' }
+              : s.id === 'sign'
+                ? { ...s, status: 'current' }
+                : s
+          )
+        );
+
+        const signedTransaction = await signTransaction(transaction);
+        console.log('[SwapForm] ✅ Transaction signed');
+
+        // Send the transaction
+        console.log('[SwapForm] Step 4: Sending transaction to network...');
         setExecutionSteps(prev =>
           prev.map(s =>
             s.id === 'sign'
@@ -232,7 +261,49 @@ export function SwapForm() {
           )
         );
 
-        return swapTx;
+        const signature = await connection.sendRawTransaction(signedTransaction.serialize(), {
+          skipPreflight: false,
+          preflightCommitment: 'confirmed',
+          maxRetries: 3,
+        });
+        console.log('[SwapForm] ✅ Transaction sent, signature:', signature);
+
+        // Confirm the transaction
+        console.log('[SwapForm] Step 5: Confirming transaction...');
+        setExecutionSteps(prev =>
+          prev.map(s =>
+            s.id === 'send'
+              ? { ...s, status: 'completed' }
+              : s.id === 'confirm'
+                ? { ...s, status: 'current' }
+                : s
+          )
+        );
+
+        const lastValidBlockHeight = (swapResult as any).lastValidBlockHeight;
+        const latestBlockhash = await connection.getLatestBlockhash('confirmed');
+        
+        const confirmation = await connection.confirmTransaction(
+          {
+            signature,
+            blockhash: latestBlockhash.blockhash,
+            lastValidBlockHeight: lastValidBlockHeight || latestBlockhash.lastValidBlockHeight,
+          },
+          'confirmed'
+        );
+
+        if (confirmation.value.err) {
+          console.error('[SwapForm] ❌ Transaction failed on-chain:', confirmation.value.err);
+          throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+        }
+
+        console.log('[SwapForm] ✅ Transaction confirmed!', { signature, slot: confirmation.context.slot });
+
+        return {
+          success: true,
+          signature,
+          receiptId: (swapResult as any).receiptId,
+        };
       } catch (error) {
         console.error('[SwapForm] ❌ Swap execution failed:', {
           error: error instanceof Error ? error.message : String(error),
