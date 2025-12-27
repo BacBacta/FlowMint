@@ -94,21 +94,63 @@ export function SwapForm() {
     queryKey: ['quote', inputToken.mint, outputToken.mint, debouncedAmount, slippage, protectedMode],
     queryFn: async () => {
       if (!debouncedAmount || parseFloat(debouncedAmount) <= 0) {
+        console.log('[SwapForm] Quote skipped: no valid amount');
         return null;
       }
       const amountInLamports = Math.floor(parseFloat(debouncedAmount) * 10 ** inputToken.decimals);
-      return apiClient.getQuoteWithRisk({
+      
+      console.log('[SwapForm] Fetching quote...', {
+        inputToken: inputToken.symbol,
         inputMint: inputToken.mint,
+        outputToken: outputToken.symbol,
         outputMint: outputToken.mint,
-        amount: amountInLamports,
-        slippageBps: slippage,
+        amount: debouncedAmount,
+        amountInLamports,
+        slippage,
         protectedMode,
+        network: SOLANA_NETWORK,
       });
+
+      try {
+        const result = await apiClient.getQuoteWithRisk({
+          inputMint: inputToken.mint,
+          outputMint: outputToken.mint,
+          amount: amountInLamports,
+          slippageBps: slippage,
+          protectedMode,
+        });
+        console.log('[SwapForm] ✅ Quote received:', {
+          inAmount: result.quote.inAmount,
+          outAmount: result.quote.outAmount,
+          priceImpactPct: result.quote.priceImpactPct,
+          riskLevel: result.riskAssessment?.level,
+          routeSteps: result.quote.routePlan?.length,
+        });
+        return result;
+      } catch (error) {
+        console.error('[SwapForm] ❌ Quote error:', {
+          error: error instanceof Error ? error.message : String(error),
+          inputMint: inputToken.mint,
+          outputMint: outputToken.mint,
+          amount: amountInLamports,
+        });
+        throw error;
+      }
     },
     enabled: !!debouncedAmount && parseFloat(debouncedAmount) > 0,
     staleTime: 10000, // 10 seconds
     refetchInterval: 15000, // Refresh every 15 seconds
   });
+
+  // Log quote errors when they occur
+  useEffect(() => {
+    if (quoteError) {
+      console.error('[SwapForm] Quote query error state:', {
+        error: quoteError instanceof Error ? quoteError.message : String(quoteError),
+        stack: quoteError instanceof Error ? quoteError.stack : undefined,
+      });
+    }
+  }, [quoteError]);
 
   const quote: QuoteResponse | null = quoteData?.quote ?? null;
   const riskAssessment = quoteData?.riskAssessment;
@@ -121,8 +163,26 @@ export function SwapForm() {
   const swapMutation = useMutation({
     mutationFn: async () => {
       if (!publicKey || !signTransaction || !quote) {
-        throw new Error('Wallet not connected or no quote');
+        const error = 'Wallet not connected or no quote';
+        console.error('[SwapForm] ❌ Swap precondition failed:', {
+          hasPublicKey: !!publicKey,
+          hasSignTransaction: !!signTransaction,
+          hasQuote: !!quote,
+        });
+        throw new Error(error);
       }
+
+      console.log('[SwapForm] 🚀 Starting swap execution...', {
+        userPublicKey: publicKey.toBase58(),
+        inputToken: inputToken.symbol,
+        inputMint: inputToken.mint,
+        outputToken: outputToken.symbol,
+        outputMint: outputToken.mint,
+        inputAmount,
+        slippage,
+        protectedMode,
+        quoteOutAmount: quote.outAmount,
+      });
 
       // Reset and start execution tracking
       setExecutionSteps([
@@ -133,6 +193,7 @@ export function SwapForm() {
       ]);
 
       // Get swap transaction from server
+      console.log('[SwapForm] Step 1: Requesting swap transaction from server...');
       setExecutionSteps(prev =>
         prev.map(s =>
           s.id === 'prepare'
@@ -143,34 +204,67 @@ export function SwapForm() {
         )
       );
 
-      const swapTx = await apiClient.executeSwap({
-        userPublicKey: publicKey.toBase58(),
-        inputMint: inputToken.mint,
-        outputMint: outputToken.mint,
-        amount: Math.floor(parseFloat(inputAmount) * 10 ** inputToken.decimals).toString(),
-        slippageBps: slippage,
-        protectedMode,
-      });
+      try {
+        const swapTx = await apiClient.executeSwap({
+          userPublicKey: publicKey.toBase58(),
+          inputMint: inputToken.mint,
+          outputMint: outputToken.mint,
+          amount: Math.floor(parseFloat(inputAmount) * 10 ** inputToken.decimals).toString(),
+          slippageBps: slippage,
+          protectedMode,
+        });
 
-      // Update execution steps after successful submission
-      setExecutionSteps(prev =>
-        prev.map(s =>
-          s.id === 'sign'
-            ? { ...s, status: 'completed' }
-            : s.id === 'send'
-              ? { ...s, status: 'current' }
-              : s
-        )
-      );
+        console.log('[SwapForm] ✅ Swap transaction received:', {
+          success: swapTx.success,
+          signature: swapTx.signature,
+          receiptId: swapTx.receipt?.id,
+          error: swapTx.error,
+        });
 
-      return swapTx;
+        // Update execution steps after successful submission
+        setExecutionSteps(prev =>
+          prev.map(s =>
+            s.id === 'sign'
+              ? { ...s, status: 'completed' }
+              : s.id === 'send'
+                ? { ...s, status: 'current' }
+                : s
+          )
+        );
+
+        return swapTx;
+      } catch (error) {
+        console.error('[SwapForm] ❌ Swap execution failed:', {
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          inputMint: inputToken.mint,
+          outputMint: outputToken.mint,
+          amount: inputAmount,
+        });
+        throw error;
+      }
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      console.log('[SwapForm] ✅ Swap mutation success:', data);
       setExecutionSteps(prev => prev.map(s => ({ ...s, status: 'completed' as const })));
       queryClient.invalidateQueries({ queryKey: ['quote'] });
       queryClient.invalidateQueries({ queryKey: ['swapHistory'] });
       setInputAmount('');
       setRiskAcknowledged(false);
+    },
+    onError: (error) => {
+      console.error('[SwapForm] ❌ Swap mutation error:', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      // Mark current step as failed
+      setExecutionSteps(prev => 
+        prev.map(s => 
+          s.status === 'current' 
+            ? { ...s, status: 'pending' as const } 
+            : s
+        )
+      );
     },
   });
 

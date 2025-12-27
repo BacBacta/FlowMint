@@ -193,43 +193,101 @@ class ApiClient {
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl;
+    console.log('[FlowMint API] Initialized with baseUrl:', baseUrl || '(local Next.js routes)');
+    console.log('[FlowMint API] API_PREFIX:', API_PREFIX);
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
+    const method = options.method || 'GET';
+    const startTime = performance.now();
 
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
+    console.log(`[FlowMint API] ${method} ${url}`, {
+      body: options.body ? JSON.parse(options.body as string) : undefined,
     });
 
-    const payload: any = await response.json().catch(() => null);
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers,
+        },
+      });
+    } catch (networkError) {
+      const elapsed = (performance.now() - startTime).toFixed(0);
+      console.error(`[FlowMint API] ❌ NETWORK ERROR after ${elapsed}ms:`, {
+        url,
+        method,
+        error: networkError instanceof Error ? networkError.message : String(networkError),
+      });
+      throw networkError;
+    }
+
+    const elapsed = (performance.now() - startTime).toFixed(0);
+    console.log(`[FlowMint API] Response ${response.status} in ${elapsed}ms from ${url}`);
+
+    const payload: any = await response.json().catch((parseError) => {
+      console.error(`[FlowMint API] ❌ JSON PARSE ERROR:`, {
+        url,
+        status: response.status,
+        error: parseError instanceof Error ? parseError.message : String(parseError),
+      });
+      return null;
+    });
+
+    // Log full response for debugging
+    console.log(`[FlowMint API] Response payload:`, payload);
 
     // Backend typically returns { success: boolean, data?: any, error?: string }
     if (payload && typeof payload === 'object' && 'success' in payload) {
       if (payload.success === false) {
         const message = payload.error || payload.message || `HTTP ${response.status}`;
+        console.error(`[FlowMint API] ❌ API ERROR:`, {
+          url,
+          method,
+          status: response.status,
+          error: message,
+          code: payload.code,
+          details: payload.details,
+          fullPayload: payload,
+        });
         throw new Error(message);
       }
       if (!response.ok) {
         const message = payload.error || payload.message || `HTTP ${response.status}`;
+        console.error(`[FlowMint API] ❌ HTTP ERROR:`, {
+          url,
+          method,
+          status: response.status,
+          error: message,
+          fullPayload: payload,
+        });
         throw new Error(message);
       }
       // Prefer unwrapping `data` when present.
       if ('data' in payload) {
+        console.log(`[FlowMint API] ✅ Success (unwrapped data)`);
         return payload.data as T;
       }
+      console.log(`[FlowMint API] ✅ Success`);
       return payload as T;
     }
 
     if (!response.ok) {
       const message = payload?.message || payload?.error || `HTTP ${response.status}`;
+      console.error(`[FlowMint API] ❌ HTTP ERROR (no success field):`, {
+        url,
+        method,
+        status: response.status,
+        error: message,
+        fullPayload: payload,
+      });
       throw new Error(message);
     }
 
+    console.log(`[FlowMint API] ✅ Success (raw payload)`);
     return payload as T;
   }
 
