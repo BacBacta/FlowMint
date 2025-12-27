@@ -291,6 +291,12 @@ export function createIntentRoutes(db: DatabaseService): Router {
             error: error.message,
           });
         }
+        if (error.message === 'Intent cannot be cancelled') {
+          return res.status(409).json({
+            success: false,
+            error: 'Intent already cancelled or completed',
+          });
+        }
       }
       next(error);
     }
