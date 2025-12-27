@@ -8,6 +8,10 @@ import { z } from 'zod';
 import { DatabaseService } from '../../db/database.js';
 import { ExecutionEngine } from '../../services/executionEngine.js';
 import { jupiterService, JupiterError } from '../../services/jupiterService.js';
+import {
+  jupiterUltraService,
+  JupiterUltraError,
+} from '../../services/jupiterUltraService.js';
 import { riskScoringService } from '../../services/riskScoring.js';
 import { logger } from '../../utils/logger.js';
 
@@ -19,6 +23,15 @@ function isJupiterError(error: unknown): error is JupiterError {
     typeof error === 'object' &&
     error !== null &&
     (error as { name?: string }).name === 'JupiterError'
+  );
+}
+
+function isJupiterUltraError(error: unknown): error is JupiterUltraError {
+  if (error instanceof JupiterUltraError) return true;
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { name?: string }).name === 'JupiterUltraError'
   );
 }
 
@@ -50,6 +63,26 @@ const confirmSwapSchema = z.object({
   txSignature: z.string().min(64).max(100),
   success: z.boolean(),
   error: z.string().optional(),
+});
+
+/**
+ * Ultra API schemas
+ */
+const ultraOrderSchema = z.object({
+  inputMint: z.string().min(32).max(44),
+  outputMint: z.string().min(32).max(44),
+  amount: z.string().regex(/^\d+$/),
+  taker: z.string().min(32).max(44).optional(),
+  receiver: z.string().min(32).max(44).optional(),
+  referralAccount: z.string().min(32).max(44).optional(),
+  referralFee: z.number().min(50).max(255).optional(),
+  includeRisk: z.boolean().optional(),
+  protectedMode: z.boolean().optional(),
+});
+
+const ultraExecuteSchema = z.object({
+  signedTransaction: z.string().min(1),
+  requestId: z.string().min(1),
 });
 
 /**
@@ -411,6 +444,274 @@ export function createSwapRoutes(db: DatabaseService): Router {
           details: error.errors,
         });
       }
+      next(error);
+    }
+  });
+
+  // ===========================================================================
+  // ULTRA API ENDPOINTS
+  // ===========================================================================
+
+  /**
+   * GET /api/v1/swap/ultra/order
+   *
+   * Get a swap order from Jupiter Ultra API.
+   * Ultra provides RPC-less, optimized swaps with MEV protection.
+   * If taker is provided, returns an unsigned transaction ready to sign.
+   */
+  router.get('/ultra/order', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const query = ultraOrderSchema.parse({
+        inputMint: req.query.inputMint,
+        outputMint: req.query.outputMint,
+        amount: req.query.amount,
+        taker: req.query.taker,
+        receiver: req.query.receiver,
+        referralAccount: req.query.referralAccount,
+        referralFee: req.query.referralFee
+          ? parseInt(req.query.referralFee as string, 10)
+          : undefined,
+        includeRisk:
+          typeof req.query.includeRisk === 'string' ? req.query.includeRisk === 'true' : undefined,
+        protectedMode:
+          typeof req.query.protectedMode === 'string'
+            ? req.query.protectedMode === 'true'
+            : undefined,
+      });
+
+      log.info({ query }, 'Ultra order request');
+
+      const order = await jupiterUltraService.getOrder({
+        inputMint: query.inputMint,
+        outputMint: query.outputMint,
+        amount: query.amount,
+        taker: query.taker,
+        receiver: query.receiver,
+        referralAccount: query.referralAccount,
+        referralFee: query.referralFee,
+      });
+
+      // Include risk assessment if requested
+      if (query.includeRisk) {
+        const quoteTimestamp = Date.now();
+        // Convert Ultra order to a format compatible with risk scoring
+        const quoteForRisk = {
+          inputMint: order.inputMint,
+          inAmount: order.inAmount,
+          outputMint: order.outputMint,
+          outAmount: order.outAmount,
+          otherAmountThreshold: order.otherAmountThreshold,
+          swapMode: order.swapMode,
+          slippageBps: order.slippageBps,
+          platformFee: order.platformFee,
+          priceImpactPct: order.priceImpactPct,
+          routePlan: order.routePlan,
+          contextSlot: 0, // Ultra doesn't provide this
+          timeTaken: order.totalTime,
+        };
+
+        const riskAssessment = await riskScoringService.scoreSwap(
+          {
+            inputMint: query.inputMint,
+            outputMint: query.outputMint,
+            amountIn: query.amount,
+            slippageBps: order.slippageBps,
+            protectedMode: query.protectedMode ?? false,
+            quoteTimestamp,
+          },
+          quoteForRisk
+        );
+
+        return res.json({
+          success: true,
+          data: {
+            order,
+            quoteTimestamp,
+            riskAssessment,
+          },
+        });
+      }
+
+      res.json({
+        success: true,
+        data: order,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid request parameters',
+          details: error.errors,
+        });
+      }
+
+      if (isJupiterUltraError(error)) {
+        const status = error.statusCode && error.statusCode >= 400 ? error.statusCode : 502;
+        return res.status(status).json({
+          success: false,
+          error: error.message,
+          code: error.code,
+        });
+      }
+      next(error);
+    }
+  });
+
+  /**
+   * POST /api/v1/swap/ultra/execute
+   *
+   * Execute a signed swap transaction through Jupiter Ultra.
+   * Ultra handles broadcasting with optimized landing and MEV protection.
+   */
+  router.post('/ultra/execute', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const body = ultraExecuteSchema.parse(req.body);
+
+      log.info({ requestId: body.requestId }, 'Ultra execute request');
+
+      const result = await jupiterUltraService.execute({
+        signedTransaction: body.signedTransaction,
+        requestId: body.requestId,
+      });
+
+      if (result.status === 'Failed') {
+        return res.status(400).json({
+          success: false,
+          error: result.error || 'Swap execution failed',
+          code: result.code,
+        });
+      }
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid request parameters',
+          details: error.errors,
+        });
+      }
+
+      if (isJupiterUltraError(error)) {
+        const status = error.statusCode && error.statusCode >= 400 ? error.statusCode : 502;
+        return res.status(status).json({
+          success: false,
+          error: error.message,
+          code: error.code,
+        });
+      }
+      next(error);
+    }
+  });
+
+  /**
+   * GET /api/v1/swap/ultra/holdings/:wallet
+   *
+   * Get token holdings for a wallet via Ultra API (RPC-less).
+   */
+  router.get('/ultra/holdings/:wallet', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const wallet = z.string().min(32).max(44).parse(req.params.wallet);
+
+      const holdings = await jupiterUltraService.getHoldings(wallet);
+
+      res.json({
+        success: true,
+        data: holdings,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid wallet address',
+          details: error.errors,
+        });
+      }
+
+      if (isJupiterUltraError(error)) {
+        const status = error.statusCode && error.statusCode >= 400 ? error.statusCode : 502;
+        return res.status(status).json({
+          success: false,
+          error: error.message,
+          code: error.code,
+        });
+      }
+      next(error);
+    }
+  });
+
+  /**
+   * GET /api/v1/swap/ultra/shield
+   *
+   * Get token safety information via Ultra API.
+   */
+  router.get('/ultra/shield', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const mints = z.string().min(32).parse(req.query.mints);
+      const mintList = mints.split(',').filter(m => m.length >= 32);
+
+      if (mintList.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'No valid mints provided',
+        });
+      }
+
+      const shield = await jupiterUltraService.getShield(mintList);
+
+      res.json({
+        success: true,
+        data: shield,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid mints parameter',
+          details: error.errors,
+        });
+      }
+
+      if (isJupiterUltraError(error)) {
+        const status = error.statusCode && error.statusCode >= 400 ? error.statusCode : 502;
+        return res.status(status).json({
+          success: false,
+          error: error.message,
+          code: error.code,
+        });
+      }
+      next(error);
+    }
+  });
+
+  /**
+   * GET /api/v1/swap/ultra/health
+   *
+   * Check if Ultra API is available and API key is valid.
+   */
+  router.get('/ultra/health', async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const isHealthy = await jupiterUltraService.healthCheck();
+
+      if (!isHealthy) {
+        return res.status(503).json({
+          success: false,
+          error: 'Jupiter Ultra API is not available or API key is invalid',
+          hint: 'Configure JUPITER_API_KEY via portal.jup.ag',
+        });
+      }
+
+      res.json({
+        success: true,
+        data: {
+          status: 'ok',
+          api: 'Jupiter Ultra',
+        },
+      });
+    } catch (error) {
       next(error);
     }
   });
