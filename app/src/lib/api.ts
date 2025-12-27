@@ -350,35 +350,65 @@ class ApiClient {
     signatureData: { signature: string; timestamp: number }
   ): Promise<IntentResponse> {
     if (params.type === 'dca') {
-      return this.request(`${API_PREFIX}/intents/dca`, {
-        method: 'POST',
-        body: JSON.stringify({
-          userPublicKey: params.userPublicKey,
-          tokenFrom: params.inputMint,
-          tokenTo: params.outputMint,
-          totalAmount: String(Math.floor(params.totalAmount)),
-          numberOfSwaps: params.numberOfOrders,
-          intervalSeconds: params.intervalMs ? Math.floor(params.intervalMs / 1000) : undefined,
-          signature: signatureData.signature,
-          timestamp: signatureData.timestamp,
-        }),
-      });
-    }
+      // Ensure required fields have valid values
+      const numberOfSwaps = params.numberOfOrders ?? 10; // default 10 swaps
+      const intervalSeconds = params.intervalMs ? Math.floor(params.intervalMs / 1000) : 86400; // default 1 day
+      
+      if (numberOfSwaps < 2 || numberOfSwaps > 100) {
+        throw new Error(`numberOfSwaps must be between 2 and 100, got: ${numberOfSwaps}`);
+      }
+      if (intervalSeconds < 60 || intervalSeconds > 2592000) {
+        throw new Error(`intervalSeconds must be between 60 and 2592000, got: ${intervalSeconds}`);
+      }
 
-    return this.request(`${API_PREFIX}/intents/stop-loss`, {
-      method: 'POST',
-      body: JSON.stringify({
+      const body = {
         userPublicKey: params.userPublicKey,
         tokenFrom: params.inputMint,
         tokenTo: params.outputMint,
         totalAmount: String(Math.floor(params.totalAmount)),
-        priceThreshold: params.triggerPrice,
-        // Default to 'below' as a safe/common stop-loss direction.
-        priceDirection: 'below',
-        priceFeedId: params.pythFeedId,
+        numberOfSwaps,
+        intervalSeconds,
         signature: signatureData.signature,
         timestamp: signatureData.timestamp,
-      }),
+      };
+      
+      console.log('[FlowMint API] Creating DCA intent with params:', {
+        userPublicKey: body.userPublicKey,
+        tokenFrom: body.tokenFrom,
+        tokenTo: body.tokenTo,
+        totalAmount: body.totalAmount,
+        numberOfSwaps: body.numberOfSwaps,
+        intervalSeconds: body.intervalSeconds,
+        timestamp: body.timestamp,
+        signaturePrefix: body.signature.slice(0, 20) + '...',
+      });
+
+      return this.request(`${API_PREFIX}/intents/dca`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+    }
+
+    const stopLossBody = {
+      userPublicKey: params.userPublicKey,
+      tokenFrom: params.inputMint,
+      tokenTo: params.outputMint,
+      totalAmount: String(Math.floor(params.totalAmount)),
+      priceThreshold: params.triggerPrice,
+      priceDirection: 'below',
+      priceFeedId: params.pythFeedId,
+      signature: signatureData.signature,
+      timestamp: signatureData.timestamp,
+    };
+
+    console.log('[FlowMint API] Creating stop-loss intent with params:', {
+      ...stopLossBody,
+      signature: stopLossBody.signature.slice(0, 20) + '...',
+    });
+
+    return this.request(`${API_PREFIX}/intents/stop-loss`, {
+      method: 'POST',
+      body: JSON.stringify(stopLossBody),
     });
   }
 
